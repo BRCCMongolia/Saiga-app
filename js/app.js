@@ -80,7 +80,7 @@ async function homeView() {
     const done = rs.filter((r) => r.status === 'done' || r.status === 'incomplete').length;
     const finished = done === s.transects.length && s.transects.length > 0;
     return `<a class="card survey" href="#/s/${encodeURIComponent(s.id)}">
-      <div class="row between"><b>${h(s.name)}</b><span class="pill ${finished ? 'green' : 'yellow'}">${finished ? 'Дууссан' : (rs.some((r) => r.status !== 'new') ? 'Явж байна' : 'Эхлээгүй')}</span></div>
+      <div class="row between"><b>${h(s.name)}</b><span class="row gap4">${s.test ? '<span class="pill">Туршилт</span>' : ''}<span class="pill ${finished ? 'green' : 'yellow'}">${finished ? 'Дууссан' : (rs.some((r) => r.status !== 'new') ? 'Явж байна' : 'Эхлээгүй')}</span></span></div>
       <span class="muted small">${s.startDate ? fmtDate(s.startDate) + ' – ' + (s.endDate ? fmtDate(s.endDate) : '') : 'Эхлээгүй'} · Ахлагч: ${h(s.leader || '-')}</span>
       <span class="muted small">Судлаач: ${h((s.researchers || []).join(', ') || '-')}</span>
       <span class="muted small">${done} / ${s.transects.length} трансект дууссан</span>
@@ -115,7 +115,7 @@ async function homeView() {
   syncStatusInto('syncst');
   actions.newsurvey = async () => {
     const y = new Date().getFullYear();
-    const cur = surveys.find((s) => new Date(s.createdAt).getFullYear() === y);
+    const cur = surveys.find((s) => !s.test && new Date(s.createdAt).getFullYear() === y);
     if (cur) {
       const r = await modal({
         title: `${y} онд судалгаа эхэлсэн байна`,
@@ -198,6 +198,10 @@ async function settingsView() {
       <input id="simf" class="inp" inputmode="numeric" value="${settings.simFactor}">
       <button class="btn" data-act="savesim">Хадгалах</button>
       <span class="muted small">Анхаар: хээрт гарахаас өмнө заавал унтраана.</span>
+      <hr>
+      <b>Бодит GPS-ээр турших</b>
+      <span class="muted small">Одоо байгаа газраасаа 2 км туршилтын замнал үүсгэнэ. Дуураймал GPS-г унтрааж, машинаар явж туршина. Туршилтын судалгаа Google Sheet руу илгээгдэхгүй.</span>
+      <button class="btn" data-act="testline">Энд туршилтын замнал үүсгэх</button>
     </div>
     <div class="card col">
       <b>Нөөц хуулбар</b>
@@ -224,9 +228,36 @@ async function settingsView() {
     settings.simFactor = Math.max(1, Math.min(50, +document.getElementById('simf').value || 1));
     await saveSettings(); toast(settings.sim ? 'Дуураймал GPS асаалттай' : 'Жинхэнэ GPS');
   };
+  actions.testline = createTestSurvey;
   actions.tiles = downloadTiles;
   actions.backup = backup;
   document.getElementById('restore').addEventListener('change', restore);
+}
+
+// Бодит GPS туршилт: одоогийн байрлалаас 2 км шугам бүхий тусдаа "Туршилт" судалгаа
+async function createTestSurvey() {
+  const dir = await modal({
+    title: 'Туршилтын замнал аль зүг рүү?',
+    body: '<p>Одоогийн байрлалаас 2 км шулуун шугам. Явах замтайгаа ойролцоо зүгийг сонгоно уу.</p><div class="grid2">' + [['Хойд', 0], ['Зүүн', 90], ['Урд', 180], ['Баруун', 270]].map(([l, v]) => `<button class="btn" data-dir="${v}">${l}</button>`).join('') + '</div>',
+    buttons: [{ label: 'Болих', value: null }],
+    onMount: (w, cl) => w.querySelectorAll('[data-dir]').forEach((b) => b.onclick = () => cl(+b.dataset.dir)),
+  });
+  if (dir == null) return;
+  toast('Байрлал тогтоож байна...');
+  const pos = await new Promise((res) => navigator.geolocation.getCurrentPosition((p) => res(p.coords), () => res(null), { enableHighAccuracy: true, timeout: 20000 }));
+  if (!pos) return toast('GPS байрлал олдсонгүй. Гадаа эсвэл цонхны дэргэд дахин оролдоно уу.', 'warn', 5000);
+  const b = geo.destination(pos.latitude, pos.longitude, 2000, dir);
+  const last = (await db.all('surveys')).filter((x) => !x.deleted && !x.test).sort((a, c) => c.createdAt - a.createdAt)[0];
+  const now = Date.now();
+  const rec = {
+    id: db.uid(), createdAt: now, startDate: null, endDate: null, test: true,
+    name: 'Туршилт ' + fmtDate(now), leader: last?.leader || '', researchers: last?.researchers || [], driver: last?.driver || '',
+    recorder: last?.recorder || 'Туршилт',
+    transects: [{ id: 'T1', km: 2, a: [pos.longitude, pos.latitude], b: [b[1], b[0]] }],
+  };
+  await db.put('surveys', rec);
+  toast('Туршилтын замнал үүслээ', 'ok');
+  go('#/s/' + encodeURIComponent(rec.id));
 }
 
 function tileList(bbox, zmin, zmax) {
@@ -967,12 +998,31 @@ async function runView(sid, tid) {
     });
   };
 
+  const gpsWarn = () => {
+    R.gpsBad = true;
+    if (Date.now() - (R.lastGpsWarn || 0) < 60000) return;
+    R.lastGpsWarn = Date.now();
+    banner('GPS муу байна. Утсаа цонх руу ойртуулна уу.', 'red', 6000);
+    beep(3, 440);
+  };
+  // 30 секунд GPS ирэхгүй бол сануулна
+  R.lastFixAt = Date.now();
+  const gpsWatch = setInterval(() => { if (Date.now() - R.lastFixAt > 30000) gpsWarn(); }, 5000);
+  cleanup.push(() => clearInterval(gpsWatch));
   // GPS бүрт
   const onFix = (f) => {
-    if (!f || f.error) { if (f && f.error) banner(f.error, 'red', 5000); return; }
+    if (!f || f.error) {
+      if (f && /зөвшөөрөл/.test(f.error)) banner(f.error, 'red', 5000); else if (f) gpsWarn();
+      return;
+    }
     const first = !R.fix;
     const prev = R.fix;
     R.fix = f;
+    R.lastFixAt = Date.now();
+    // GPS нарийвчлал муу (50 м-ээс их) 3 удаа дараалбал сануулна
+    R.badAcc = f.acc != null && f.acc > 50 ? (R.badAcc || 0) + 1 : 0;
+    if (R.badAcc >= 3) gpsWarn();
+    else if (R.badAcc === 0 && R.gpsBad) { R.gpsBad = false; banner('GPS сайжирлаа', 'green', 2500); }
     const ll = [f.lat, f.lon];
     if (first) { arrow.addTo(map); accCircle.addTo(map); map.setView(ll, 14); }
     arrow.setLatLng(ll);
@@ -988,7 +1038,9 @@ async function runView(sid, tid) {
       const effort = run.status === 'active';
       const lp = R.lastPt;
       const moved = !lp || lp.seg !== run.seg ? Infinity : geo.distance(lp.lat, lp.lon, f.lat, f.lon);
-      if (moved >= 5 || (lp && f.t - lp.t > 15000 && moved >= 1)) {
+      // Зогсож байхад GPS-ийн хэлбэлзлийг зам гэж тоолохгүй (хурд < 3 км/ц бол 25 м-ээс бага шилжилтийг алгасна)
+      const still = f.speed != null && f.speed < 0.8 && moved < 25;
+      if (moved >= 5 && !still) {
         const p = { runKey: run.key, seg: run.seg, effort, t: f.t, lat: f.lat, lon: f.lon, alt: f.alt ?? null, acc: f.acc ?? null };
         if (lp && lp.seg === run.seg && effort && moved !== Infinity) R.effortM += moved;
         R.lastPt = p;

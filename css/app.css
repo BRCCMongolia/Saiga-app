@@ -278,3 +278,4 @@ textarea.inp { resize: vertical; }
 .leaflet-container.nomap { background: #F7F3EA; }
 a.note { display: block; text-decoration: none; }
 .rbottom .btn.small.danger { min-height: 40px; }
+.card hr { border: 0; border-top: 1px solid var(--line); margin: 6px 0; width: 100%; }

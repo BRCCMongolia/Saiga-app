@@ -26,7 +26,8 @@ function blobToBase64(blob) {
 export async function pendingCount() {
   const s = await db.all('sightings');
   const r = await db.all('runs');
-  return s.filter((x) => !x.synced).length + r.filter((x) => !x.synced && x.status !== 'new').length;
+  const test = new Set((await db.all('surveys')).filter((x) => x.test).map((x) => x.id));
+  return s.filter((x) => !x.synced && !test.has(x.surveyId)).length + r.filter((x) => !x.synced && x.status !== 'new' && !test.has(x.surveyId)).length;
 }
 
 export async function syncAll() {
@@ -37,6 +38,7 @@ export async function syncAll() {
   try {
     const surveys = await db.all('surveys');
     for (const survey of surveys) {
+      if (survey.test) continue; // туршилтын судалгаа Sheet руу явахгүй
       const sightings = (await db.byIndex('sightings', 'survey', survey.id)).sort((a, b) => a.t - b.t);
       const runs = {};
       for (const t of survey.transects) runs[t.id] = await db.get('runs', runKey(survey.id, t.id));
