@@ -698,7 +698,7 @@ function reportHtml(survey, sights, stats, open) {
     const sp = Object.entries(by).map(([k, v]) => [k, v, v.reduce((a, b) => a + b, 0)]).sort((a, b) => b[2] - a[2] || a[0].localeCompare(b[0]));
     return line(`${op ? '▾' : '▸'} ${label}`, list.map((x) => +x.total || 0), `tot grp grp-${key}`, `data-act="repgrp" data-g="${key}"`) + (op ? sp.map(([k, v]) => line(h(k), v, 'sub')).join('') : '');
   };
-  const table = (list) => (list.length ? `<div class="rtable"><table><thead><tr><th>Зүйл</th><th>Сүрэг</th><th>Нийт</th><th>Дундаж</th><th>Мин</th><th>Макс</th></tr></thead><tbody>${line('Нийт', list.map((x) => +x.total || 0), 'tot')}${group(list.filter((x) => !isOther(x.species)), 'a', 'Амьтан')}${group(list.filter((x) => isOther(x.species)), 'o', 'Бусад')}</tbody></table></div>` : '<p class="muted small">Бүртгэл алга</p>');
+  const table = (list) => (list.length ? `<div class="rtable"><table><thead><tr><th>Зүйл</th><th>Сүрэг</th><th>Нийт</th><th>Дундаж</th><th>Мин</th><th>Макс</th></tr></thead><tbody>${group(list.filter((x) => !isOther(x.species)), 'a', 'Амьтан')}${group(list.filter((x) => isOther(x.species)), 'o', 'Бусад')}</tbody></table></div>` : '<p class="muted small">Бүртгэл алга</p>');
   return `<div class="group">
     <button class="ghead" data-act="togrep"><b>Товч тайлан</b><span class="muted small">${open ? '▲' : '▼'}</span></button>
     ${open ? `<div class="pad col">
@@ -1049,6 +1049,7 @@ async function runView(sid, tid) {
     go('#/s/' + encodeURIComponent(sid));
   };
   actions.start = async () => {
+    if (await otherOpen()) return;
     if (t.id === '23B' && run.status === 'new' && !(await confirmBox('23B трансект', '23B нь гэрээний газрын зураг дээр байхгүй тул хасагдсан байх магадлалтай. Багийн ахлагчаас лавлаад эхлүүлнэ үү. Эхлүүлэх үү?', 'Эхлүүлэх', 'Болих'))) return;
     if (!needFix()) return;
     const f = R.fix;
@@ -1086,6 +1087,7 @@ async function runView(sid, tid) {
   };
 
   actions.resume = async () => {
+    if (await otherOpen()) return;
     if (!needFix()) return;
     const [S, E] = ends();
     const fr = geo.lineFrame(S[0], S[1], E[0], E[1], R.fix.lat, R.fix.lon);
@@ -1101,6 +1103,7 @@ async function runView(sid, tid) {
   };
 
   actions.reopen = async () => {
+    if (await otherOpen()) return;
     if (!(await confirmBox('Дахин нээх үү?', 'Трансект "түр зогссон" төлөвт орж, үргэлжлүүлэн бичиж болно.'))) return;
     run.status = 'returning';
     run.seg = (run.seg || 0) + 1;
@@ -1126,6 +1129,11 @@ async function runView(sid, tid) {
       if (r === 'pause') { if (run.status === 'active') return actions.pause(); return; }
       reason = r.slice(4);
     } else if (!(await confirmBox(`${tid} дуусгах уу?`, '', 'Дуусгах', 'Болих'))) return;
+    await completeRun(reason);
+    toast(`${tid} ${reason ? 'дутуугаар ' : ''}дууслаа`, 'ok');
+    go('#/s/' + encodeURIComponent(sid));
+  };
+  const completeRun = async (reason) => {
     if (run.status === 'active') event('end'); else event('end', { offEffort: true });
     run.status = reason ? 'incomplete' : 'done';
     run.incompleteReason = reason;
@@ -1134,8 +1142,24 @@ async function runView(sid, tid) {
     const rs = await Promise.all(survey.transects.map((x) => db.get('runs', runKey(sid, x.id))));
     if (rs.every((r) => r && (r.status === 'done' || r.status === 'incomplete'))) { survey.endDate = Date.now(); await db.put('surveys', survey); }
     sync.syncAll();
-    toast(`${tid} ${reason ? 'дутуугаар ' : ''}дууслаа`, 'ok');
-    go('#/s/' + encodeURIComponent(sid));
+  };
+  // Төгсгөлөөс 500 м цааш явсан ч "Дуусгах" дараагүй бол автоматаар дуусгана
+  const autoFinish = async () => {
+    if (R.autoFinishing) return;
+    R.autoFinishing = true;
+    await completeRun('');
+    bottom();
+    alertBox('', '');
+    banner(`${tid} төгсгөлөөс 500 м өнгөрсөн тул автоматаар дуусгалаа`, 'green', 10000);
+    beep(3, 990);
+  };
+  // Нэг удаад зөвхөн нэг замнал: өөр замнал дуусаагүй бол шинийг эхлүүлэхгүй
+  const otherOpen = async () => {
+    const o = (await db.byIndex('runs', 'survey', sid)).find((r) => r.key !== run.key && ['active', 'returning', 'paused'].includes(r.status));
+    if (!o) return false;
+    const go2 = await confirmBox(`${o.tid} замнал дуусаагүй байна`, `Нэг удаад нэг замнал явна. Эхлээд ${o.tid} замналыг "Дуусгах" дарж дуусгана уу.`, `${o.tid} нээх`, 'Болих');
+    if (go2) go('#/run/' + encodeURIComponent(sid) + '/' + encodeURIComponent(o.tid));
+    return true;
   };
 
   actions.record = () => {
@@ -1262,7 +1286,8 @@ async function runView(sid, tid) {
     }
     guide.setLatLngs([]);
     if (run.status !== 'active') { alertBox('', ''); return; }
-    if (fr.along >= L_M - 30 && !R.endNotified) { R.endNotified = true; beep(3, 990); banner('Төгсгөлд хүрлээ. "Дуусгах" дарна уу.', 'green', 8000); }
+    if (fr.along >= L_M + 500 && f.acc != null && f.acc <= 25 || fr.along >= L_M + 500 && f.sim) return autoFinish();
+    if (fr.along >= L_M - 30 && !R.endNotified) { R.endNotified = true; beep(3, 990); banner('Төгсгөлд хүрлээ. "Дуусгах" дарна уу. 500 м цааш явбал автоматаар дуусна.', 'green', 8000); }
     // Нарийвчлал муу (25 м-ээс их) цэгээр хазайлтын дохио өөрчлөхгүй
     if (f.acc != null && f.acc > 25) return;
     const x = Math.abs(fr.cross);
