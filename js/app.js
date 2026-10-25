@@ -1186,15 +1186,24 @@ async function runView(sid, tid) {
     return true;
   };
 
+  const openRec = (f) => openRecord({
+    survey, t, map,
+    obs: { t: Date.now(), lat: f.lat, lon: f.lon, alt: f.alt ?? null, effort: run.status === 'active', age: Math.round((Date.now() - f.t) / 1000), acc: f.acc ?? null },
+    onDone: () => drawSights(),
+  });
+  // Сүүлийн 30 секундэд сайн GPS (±25 м) байхгүй бол маягт нээхгүй, GPS орж иртэл хүлээнэ
   actions.record = async () => {
-    // GPS муу/хуучин байсан ч бүртгэлийг хориглохгүй, маягт дээр сануулна
-    if (!R.fix) { toast('GPS байрлал хүлээж байна...', 'warn'); return; }
-    const f = R.fix;
-    openRecord({
-      survey, t, map,
-      obs: { t: Date.now(), lat: f.lat, lon: f.lon, alt: f.alt ?? null, effort: run.status === 'active', age: fixAge(), acc: f.acc ?? null },
-      onDone: () => drawSights(),
+    const g = R.goodFix;
+    if (g && Date.now() - g.t <= 30000) return openRec(g);
+    if (R.waitRec) return;
+    R.waitRec = true;
+    await modal({
+      title: 'GPS алдаатай байна',
+      body: '<p>Утсаа цонх руу ойртуулна уу. GPS орж ирэхэд бүртгэл автоматаар нээгдэнэ.</p>',
+      buttons: [{ label: 'Болих', value: false }],
+      onMount: (w, close) => { R.waitClose = close; },
     });
+    R.waitRec = false; R.waitClose = null;
   };
 
   const gpsWarn = () => {
@@ -1218,6 +1227,11 @@ async function runView(sid, tid) {
     const prev = R.fix;
     R.fix = f;
     R.lastFixAt = Date.now();
+    if (f.sim || f.acc == null || f.acc <= 25) {
+      R.goodFix = { ...f, t: Date.now() };
+      // Бүртгэл GPS хүлээж байсан бол одоо нээнэ
+      if (R.waitRec && R.waitClose) { R.waitClose(true); beep(2, 880); try { navigator.vibrate && navigator.vibrate(300); } catch (e) {} openRec(R.goodFix); }
+    }
     // GPS дулаацах: эхлэхэд болон 10 секундээс удаан тасарсны дараа ±15 м-ээс сайн цэг иртэл зам бичихгүй
     if (f.sim || f.acc == null) R.warm = true;
     else {
