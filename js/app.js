@@ -102,7 +102,7 @@ const topbar = (title, back = '#/', extra = '') => `<header class="top"><a class
 
 // ---------- нүүр ----------
 async function homeView() {
-  const surveys = (await db.all('surveys')).filter((x) => !x.deleted).sort((a, b) => b.createdAt - a.createdAt);
+  const surveys = (await db.all('surveys')).filter((x) => !x.deleted).sort((a, b) => (!!a.test - !!b.test) || b.createdAt - a.createdAt);
   const runs = await db.all('runs');
   const active = runs.find((r) => r.status === 'active' || r.status === 'returning');
   const rows = surveys.map((s) => {

@@ -265,7 +265,7 @@ textarea.inp { resize: vertical; }
 .zoombar { position: absolute; right: 12px; flex-wrap: wrap; justify-content: flex-end; top: calc(12px + var(--safe-t)); z-index: 2; display: flex; gap: 8px; }
 .zoomwrap { background: #fff; }
 /* лого: ногоон толгой дотор зайтай цагаан хайрцаг */
-.hero { padding-top: calc(14px + var(--safe-t)); }
+.hero { padding-top: calc(36px + var(--safe-t)); }
 .logos { margin: 0 14px; border-radius: 14px; padding: 12px 14px; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
 .brand { padding-top: 16px; }
 .diff { font-weight: 700; }
