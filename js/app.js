@@ -580,6 +580,7 @@ async function runView(sid, tid) {
       <button class="fab" data-act="center" aria-label="Төвлөрүүлэх" id="bcenter">${ICON.center}</button>
       <button class="fab" data-act="lock" aria-label="Газрын зургийг түгжих" id="block">${ICON.unlock}</button>
       <button class="fab" data-act="layer" aria-label="Газрын зургийн давхарга">${ICON.layers}</button>
+      <button class="fab" data-act="list" aria-label="Бүртгэсэн амьтад">${ICON.list}<span class="badge" id="scount"></span></button>
     </div>
     <a class="rback iconbtn light" href="#/s/${encodeURIComponent(sid)}" aria-label="Буцах" data-act="leave">${ICON.back}</a>
     <div class="rbottom" id="rbottom"></div>
@@ -602,8 +603,21 @@ async function runView(sid, tid) {
     if (s.points.length) curLine = L.polyline(s.points.map((p) => [p.lat, p.lon]), lineStyle(s.effort)).addTo(map);
     curKey = s.seg + '|' + s.effort;
   }
-  const sights = (await db.byIndex('sightings', 'survey', sid)).filter((s) => s.tid === tid && !s.deleted);
-  const sightLayer = L.layerGroup(sights.map(sightMarker)).addTo(map);
+  const sightLayer = L.layerGroup().addTo(map);
+  // Энэ трансектын бүртгэлүүд: газрын зураг дээрх цэг ба жагсаалт
+  const drawSights = async () => {
+    sightLayer.clearLayers();
+    const list = (await db.byIndex('sightings', 'survey', sid)).filter((s) => s.tid === tid && !s.deleted).sort((a, b) => a.t - b.t);
+    list.forEach((s) => sightMarker(s).on('click', () => editSight(s.id)).addTo(sightLayer));
+    const c = document.getElementById('scount');
+    if (c) c.textContent = list.length || '';
+    return list;
+  };
+  const editSight = async (id) => {
+    const s = await db.get('sightings', id);
+    if (s && !s.deleted) openRecord({ survey, t, sighting: s, onDone: () => drawSights() });
+  };
+  await drawSights();
   const arrow = L.marker(ends()[0], { icon: arrowIcon(0), interactive: false, zIndexOffset: 1000 });
   const accCircle = L.circle(ends()[0], { radius: 10, color: '#1D4ED8', weight: 1, fillOpacity: 0.12, interactive: false });
   const guide = L.polyline([], { color: '#B5562A', weight: 3, dashArray: '4 6', interactive: false }).addTo(map);
@@ -633,6 +647,22 @@ async function runView(sid, tid) {
     await saveSettings();
     map.removeLayer(tiles); tiles = baseLayer(map); tiles.bringToBack();
     toast(settings.layer === 'sat' ? 'Хиймэл дагуулын зураг' : 'Байр зүйн зураг');
+  };
+  actions.list = async () => {
+    const list = await drawSights();
+    const o = document.createElement('div');
+    o.className = 'overlay sheetwrap';
+    o.innerHTML = `<div class="sheet">
+      <div class="sheethead"><h2>${h(tid)}: бүртгэсэн амьтад (${list.length})</h2><span class="muted small">Засах бол дээр нь дарна уу</span></div>
+      <div class="sheetbody">${list.map((s) => `<button class="srow" data-id="${s.id}">
+        <span><b>${h(s.gpsName)}</b> · ${h(s.species)}<br><span class="muted small">${fmtTime(s.t)}${s.effort ? '' : ' · судалгааны бус'}${s.note ? ' · ' + h(s.note) : ''}</span></span>
+        <span>${s.total ?? ''}</span><span>${s.dist ?? '–'} м</span><span>${s.angle ?? '–'}°</span></button>`).join('') || '<p class="muted">Одоогоор бүртгэл алга.</p>'}
+        ${list.length ? `<div class="card small">${Object.entries(list.filter((s) => s.effort).reduce((a, s) => { a[s.species] = (a[s.species] || 0) + (+s.total || 0); return a; }, {})).map(([k, v]) => `${h(k)}: <b>${v}</b>`).join(' · ')}</div>` : ''}
+      </div>
+      <div class="sheetfoot"><button class="btn big grow" data-x="1">Хаах</button></div></div>`;
+    document.body.appendChild(o);
+    o.querySelector('[data-x]').onclick = () => o.remove();
+    o.querySelectorAll('.srow').forEach((b) => b.onclick = () => { o.remove(); editSight(b.dataset.id); });
   };
   actions.leave = async () => {
     if (run.status === 'active' && !(await confirmBox('Замналаас гарах уу?', 'Гарвал GPS бичлэг зогсоно. Дараа нь "Нээх" дарж үргэлжлүүлж болно.', 'Гарах', 'Үлдэх'))) return;
@@ -753,7 +783,7 @@ async function runView(sid, tid) {
     openRecord({
       survey, t, map,
       obs: { t: Date.now(), lat: f.lat, lon: f.lon, alt: f.alt ?? null, effort: run.status === 'active' },
-      onDone: async (s) => { if (s && !s.deleted) sightMarker(s).addTo(sightLayer); },
+      onDone: () => drawSights(),
     });
   };
 

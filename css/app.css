@@ -236,3 +236,7 @@ textarea.inp { resize: vertical; }
 .sexrow .nf span { font-size: 11px; letter-spacing: -0.2px; }
 .ev { padding: 4px 0; border-bottom: 1px solid #EFE8DA; }
 .ev:last-of-type { border-bottom: 0; }
+.fab { position: relative; }
+.badge { position: absolute; top: -6px; right: -6px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px; background: var(--orange); color: #fff; font-size: 13px; font-weight: 800; line-height: 22px; }
+.badge:empty { display: none; }
+.sheetbody .srow { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
