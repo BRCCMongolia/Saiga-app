@@ -1193,7 +1193,9 @@ async function runView(sid, tid) {
   });
   // Сүүлийн 30 секундэд сайн GPS (±25 м) байхгүй бол маягт нээхгүй, GPS орж иртэл хүлээнэ
   actions.record = async () => {
-    const g = R.goodFix;
+    const g = R.goodFix, f = R.fix;
+    // Шинэ (5 сек) ба ±50 м-ээс сайн цэг байвал түүнийг, үгүй бол сүүлийн сайн цэгийг авна
+    if (f && f.acc != null && f.acc <= 50 && Date.now() - R.lastFixAt <= 5000) return openRec({ ...f, t: R.lastFixAt });
     if (g && Date.now() - g.t <= 30000) return openRec(g);
     if (R.waitRec) return;
     R.waitRec = true;
@@ -1661,6 +1663,8 @@ function openRecord({ survey, t, obs, sighting, onDone }) {
     save: async () => {
       readInputs();
       const err = (m, ms = 3500) => { toast(m, 'warn', ms); return false; };
+      const badNum = [...o.querySelectorAll('[data-f]')].find((el) => el.value.trim() !== '' && decNum(el.value) == null);
+      if (badNum) { badNum.focus(); return err(`"${badNum.value}" гэсэн утга буруу байна (${badNum.getAttribute('aria-label')})`); }
       if (!s.species) return err('Зүйл сонгоно уу');
       if (s.total == null || !(s.total >= 1)) return err('Бодгалийн тоо оруулна уу');
       const sum = ['male', 'female', 'young', 'unknown'].reduce((a, k) => a + (+s[k] || 0), 0);
