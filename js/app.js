@@ -621,8 +621,7 @@ async function detailView(sid, tid) {
     if (s && !s.deleted) openRecord({ survey, t, sighting: s, onDone: () => detailView(sid, tid) });
   };
   actions.delrun = async () => {
-    if (!(await confirmBox('Устгах уу?', `${h(tid)} замналын GPS зам болон бүртгэл (${sights.filter((x) => !x.deleted).length}) устгагдаж, замнал "Эхлээгүй" болно. Google Sheet-д "Устгасан" гэж тэмдэглэгдэнэ.`, 'Устгах', 'Болих', 'danger'))) return;
-    if (!(await confirmBox(`Та ${h(tid)} замналыг устгахдаа итгэлтэй байна уу?`, 'Устгасныг буцаах боломжгүй.', 'Тийм, устгах', 'Болих', 'danger'))) return;
+    if (!(await confirmDeleteRun(survey, tid))) return;
     await deleteRun(survey, t, run);
     toast(tid + ' замнал устгагдлаа');
     sync.syncAll();
@@ -632,6 +631,12 @@ async function detailView(sid, tid) {
     toast('Файл бэлдэж байна...');
     try { const z = await exp.zipTransect(survey, tid); await exp.shareFile(z.blob, z.name, survey.name + ' ' + tid); } catch (e) { console.error(e); toast('Алдаа: ' + e.message, 'err', 5000); }
   };
+}
+
+async function confirmDeleteRun(survey, tid) {
+  const n = (await db.byIndex('sightings', 'survey', survey.id)).filter((x) => x.tid === tid && !x.deleted).length;
+  if (!(await confirmBox('Устгах уу?', `${h(tid)} замналын GPS зам болон бүртгэл (${n}) устгагдаж, замнал "Эхлээгүй" болно. Google Sheet-д "Устгасан" гэж тэмдэглэгдэнэ.`, 'Устгах', 'Болих', 'danger'))) return false;
+  return confirmBox(`Та ${h(tid)} замналыг устгахдаа итгэлтэй байна уу?`, 'Устгасныг буцаах боломжгүй.', 'Тийм, устгах', 'Болих', 'danger');
 }
 
 // Замнал устгах: Sheet-д "Устгасан" мөр үлдээж, замналыг эхлээгүй болгоно.
@@ -645,7 +650,9 @@ async function deleteRun(survey, t, run) {
     if (x.tid === t.id && !x.deleted) { x.deleted = true; x.synced = false; x.rev = now; await db.put('sightings', x); }
   }
   for (const p of points) await db.del('points', p.n);
-  await db.put('runs', { ...newRun(survey, t), sheetId: run.key + '|' + now, rev: now });
+  const fresh = { ...newRun(survey, t), sheetId: run.key + '|' + now, rev: now };
+  await db.put('runs', fresh);
+  return fresh;
 }
 
 // Судалгаа устгах. Sheet холбогдсон бол "Устгасан" гэж тэмдэглэнэ, үгүй бол утаснаас бүр мөсөн устгана.
@@ -833,10 +840,11 @@ async function runView(sid, tid) {
     const el = document.getElementById('rbottom');
     if (!el) return;
     const rec = `<button class="btn rec" data-act="record">${ICON.plus} Бүртгэл</button>`;
+    const delBtn = '<button class="btn small danger" data-act="delrun">Замнал устгах</button>';
     if (run.status === 'new') el.innerHTML = `${rec}<div class="row gap"><button class="btn big grow primary" data-act="start">Эхлэх</button></div>`;
     else if (run.status === 'active') el.innerHTML = `${rec}<div class="row gap"><button class="btn grow" data-act="pause">Түр зогсоох</button><button class="btn grow dark" data-act="finish">Дуусгах</button></div>`;
-    else if (run.status === 'paused' || run.status === 'returning' || run.status === 'incomplete') el.innerHTML = `${rec}<div class="row gap"><button class="btn grow yellowbtn" data-act="resume">Эхлэх (үргэлжлүүлэх)</button><button class="btn grow dark" data-act="finish">Дуусгах</button></div>`;
-    else el.innerHTML = `<div class="banner green">Энэ трансект дууссан</div><div class="row gap"><a class="btn grow" href="#/t/${encodeURIComponent(sid)}/${encodeURIComponent(tid)}">Дэлгэрэнгүй</a><button class="btn grow" data-act="reopen">Дахин нээх</button></div>`;
+    else if (run.status === 'paused' || run.status === 'returning' || run.status === 'incomplete') el.innerHTML = `${rec}<div class="row gap"><button class="btn grow yellowbtn" data-act="resume">Эхлэх (үргэлжлүүлэх)</button><button class="btn grow dark" data-act="finish">Дуусгах</button></div>${delBtn}`;
+    else el.innerHTML = `<div class="banner green">Энэ трансект дууссан</div><div class="row gap"><a class="btn grow" href="#/t/${encodeURIComponent(sid)}/${encodeURIComponent(tid)}">Дэлгэрэнгүй</a><button class="btn grow" data-act="reopen">Дахин нээх</button></div>${delBtn}`;
     const stEl = document.getElementById('rstate');
     if (stEl) stEl.textContent = { new: 'Эхлээгүй', active: 'Судалгаа явж байна', paused: 'Түр зогссон', returning: 'Түр зогссон · шугам руу', done: 'Дууссан', incomplete: 'Дутуу' }[run.status];
   };
@@ -848,6 +856,17 @@ async function runView(sid, tid) {
   };
   const needFix = () => { if (!R.fix) { toast('GPS байрлал хүлээж байна...', 'warn'); return false; } return true; };
 
+  actions.delrun = async () => {
+    if (run.status === 'active') return;
+    if (!(await confirmDeleteRun(survey, tid))) return;
+    gps.stop(); R.dirty = false;
+    const fresh = await deleteRun(survey, t, run);
+    for (const k of Object.keys(run)) delete run[k];
+    Object.assign(run, fresh);
+    toast(tid + ' замнал устгагдлаа');
+    sync.syncAll();
+    go('#/s/' + encodeURIComponent(sid));
+  };
   actions.start = async () => {
     if (t.id === '23B' && run.status === 'new' && !(await confirmBox('23B трансект', '23B нь гэрээний газрын зураг дээр байхгүй тул хасагдсан байх магадлалтай. Багийн ахлагчаас лавлаад эхлүүлнэ үү. Эхлүүлэх үү?', 'Эхлүүлэх', 'Болих'))) return;
     if (!needFix()) return;

@@ -277,3 +277,4 @@ textarea.inp { resize: vertical; }
 
 .leaflet-container.nomap { background: #F7F3EA; }
 a.note { display: block; text-decoration: none; }
+.rbottom .btn.small.danger { min-height: 40px; }
