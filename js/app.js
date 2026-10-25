@@ -543,6 +543,7 @@ async function surveyView(sid) {
   syncStatusInto('syncst');
   const redrawReport = () => { const r = document.getElementById('report'); if (r) r.innerHTML = reportHtml(survey, sightsAll, stats, !!closed.__repOpen); };
   actions.rep = (el) => { reportSel = el.dataset.t; redrawReport(); };
+  actions.repgrp = (el) => { reportGroups[el.dataset.g] = !reportGroups[el.dataset.g]; redrawReport(); };
   actions.repmode = (el) => { reportMode = el.dataset.m; if (reportMode === 'all') reportSel = ''; redrawReport(); };
   actions.togrep = async () => { closed.__repOpen = !closed.__repOpen; await db.setMeta('closed-' + sid, closed); redrawReport(); };
   actions.tog = async (el) => { closed[el.dataset.k] = !closed[el.dataset.k]; await db.setMeta('closed-' + sid, closed); surveyView(sid); };
@@ -558,6 +559,7 @@ async function surveyView(sid) {
 // ---------- товч тайлан ----------
 let reportSel = '';
 let reportMode = 'all';
+const reportGroups = { a: false, o: false };
 function reportHtml(survey, sights, stats, open) {
   const tids = survey.transects.map((t) => t.id).filter((id) => sights.some((x) => x.tid === id) || stats[id].effortKm > 0);
   if (reportSel && !tids.includes(reportSel)) reportSel = '';
@@ -566,24 +568,22 @@ function reportHtml(survey, sights, stats, open) {
   const eff = sights.filter((x) => x.effort && (!sel || x.tid === sel));
   const off = sights.filter((x) => !x.effort && (!sel || x.tid === sel));
   const km = sel ? stats[sel].effortKm : survey.transects.reduce((a, t) => a + stats[t.id].effortKm, 0);
-  const rows = (list) => {
+  // Мөр: нэр, сүрэг, нийт, дундаж, мин, макс
+  const line = (name, v, cls = '', attrs = '') => {
+    const sum = v.reduce((a, b) => a + b, 0);
+    return `<tr class="${cls}" ${attrs}><td>${name}</td><td>${v.length}</td><td><b>${sum}</b></td><td>${(sum / v.length).toFixed(1)}</td><td>${Math.min(...v)}</td><td>${Math.max(...v)}</td></tr>`;
+  };
+  // Бусад: мал, айл, сэг. Амьтан: бусад бүх зүйл (зэрлэг амьтан)
+  const isOther = (sp) => ['Бод мал', 'Бог мал', 'Айл'].includes(sp) || / сэг$/.test(sp);
+  const group = (list, key, label) => {
+    if (!list.length) return '';
     const by = {};
     for (const x of list) (by[x.species] = by[x.species] || []).push(+x.total || 0);
-    const order = QUICK_SPECIES.map((q) => q.mn);
-    return Object.entries(by).sort((a, b) => {
-      const ia = order.indexOf(a[0]), ib = order.indexOf(b[0]);
-      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a[0].localeCompare(b[0]);
-    }).map(([sp, v]) => {
-      const sum = v.reduce((a, b) => a + b, 0);
-      return `<tr><td>${h(sp)}</td><td>${v.length}</td><td><b>${sum}</b></td><td>${(sum / v.length).toFixed(1)}</td><td>${Math.min(...v)}</td><td>${Math.max(...v)}</td></tr>`;
-    }).join('');
+    const op = reportGroups[key];
+    const sp = Object.entries(by).map(([k, v]) => [k, v, v.reduce((a, b) => a + b, 0)]).sort((a, b) => b[2] - a[2] || a[0].localeCompare(b[0]));
+    return line(`${op ? '▾' : '▸'} ${label}`, list.map((x) => +x.total || 0), 'tot grp', `data-act="repgrp" data-g="${key}"`) + (op ? sp.map(([k, v]) => line(h(k), v, 'sub')).join('') : '');
   };
-  // Бүх зүйлийн нийт мөр (зүйлүүдийн өмнө)
-  const totalRow = (list) => {
-    const v = list.map((x) => +x.total || 0), sum = v.reduce((a, b) => a + b, 0);
-    return `<tr class="tot"><td>Нийт</td><td>${v.length}</td><td>${sum}</td><td>${(sum / v.length).toFixed(1)}</td><td>${Math.min(...v)}</td><td>${Math.max(...v)}</td></tr>`;
-  };
-  const table = (list) => (list.length ? `<div class="rtable"><table><thead><tr><th>Зүйл</th><th>Сүрэг</th><th>Нийт</th><th>Дундаж</th><th>Мин</th><th>Макс</th></tr></thead><tbody>${totalRow(list)}${rows(list)}</tbody></table></div>` : '<p class="muted small">Бүртгэл алга</p>');
+  const table = (list) => (list.length ? `<div class="rtable"><table><thead><tr><th>Зүйл</th><th>Сүрэг</th><th>Нийт</th><th>Дундаж</th><th>Мин</th><th>Макс</th></tr></thead><tbody>${line('Нийт', list.map((x) => +x.total || 0), 'tot')}${group(list.filter((x) => !isOther(x.species)), 'a', 'Амьтан')}${group(list.filter((x) => isOther(x.species)), 'o', 'Бусад')}</tbody></table></div>` : '<p class="muted small">Бүртгэл алга</p>');
   return `<div class="group">
     <button class="ghead" data-act="togrep"><b>Товч тайлан</b><span class="muted small">${open ? '▲' : '▼'}</span></button>
     ${open ? `<div class="pad col">

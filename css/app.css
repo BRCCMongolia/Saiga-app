@@ -295,3 +295,7 @@ a.note { display: block; text-decoration: none; }
 .gpsacc.ok { background: #2E7D4F; }
 .gpsacc.mid { background: #F2C94C; color: #3D2E00; }
 .gpsacc.bad { background: #C62828; }
+.rtable tr.grp { cursor: pointer; }
+.rtable tr.grp td { background: #F3EFE6; font-weight: 800; }
+.rtable tr.grp td:first-child { white-space: nowrap; }
+.rtable tr.sub td:first-child { padding-left: 22px; }
