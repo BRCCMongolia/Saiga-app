@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="mn">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Saiga survey</title>
+<meta name="theme-color" content="#2F4A3A">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Saiga survey">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="img/icon-192.png">
+<link rel="apple-touch-icon" href="img/icon-192.png">
+<link rel="stylesheet" href="js/vendor/leaflet.css">
+<link rel="stylesheet" href="css/app.css">
+<script>window.APP_VERSION = '1.0.0';</script>
+<script src="js/vendor/leaflet.js"></script>
+<script src="js/vendor/xlsx.core.min.js" defer></script>
+<script src="js/vendor/jszip.min.js" defer></script>
+</head>
+<body>
+<div id="app"></div>
+<script type="module" src="js/app.js"></script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch((e) => console.warn('SW', e)));
+}
+</script>
+</body>
+</html>
