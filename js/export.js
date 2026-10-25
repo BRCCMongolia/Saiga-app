@@ -54,10 +54,16 @@ export function buildKml(data, t) {
   k += '<Style id="eff"><LineStyle><color>ff0c41c2</color><width>4</width></LineStyle></Style>';
   k += '<Style id="off"><LineStyle><color>ff009ad9</color><width>3</width></LineStyle></Style>';
   k += '<Placemark><name>' + esc(t.id) + ' төлөвлөсөн</name><styleUrl>#plan</styleUrl><LineString><coordinates>' + t.a[0] + ',' + t.a[1] + ',0 ' + t.b[0] + ',' + t.b[1] + ',0</coordinates></LineString></Placemark>';
-  for (const s of segs) {
-    if (s.points.length < 2) continue;
-    const name = s.effort ? t.id : t.id + ' судалгааны бус зам';
-    k += '<Placemark><name>' + esc(name) + '</name><styleUrl>#' + (s.effort ? 'eff' : 'off') + '</styleUrl><LineString><tessellate>1</tessellate><coordinates>' + line(s.points) + '</coordinates></LineString></Placemark>';
+  // Нэг замналын бүх хэсгийг нэг мөрөнд (тасархайтай) нэгтгэж, нийт уртыг тайлбарт бичнэ (Трансект хүснэгттэй ижил тоо)
+  const row = transectRow(run, t, data.points[t.id], data.survey);
+  const pauses = run.events.filter((e) => e.type === 'pause').length;
+  const desc = 'Судалгааны зам: ' + row['Явсан урт, км'].toFixed(2) + ' км · Судалгааны бус зам: ' + row['Судалгааны бус зам, км'].toFixed(2) + ' км · Төлөвлөсөн: ' + t.km + ' км · Түр зогсолт: ' + pauses;
+  for (const eff of [true, false]) {
+    const parts = segs.filter((s) => s.effort === eff && s.points.length >= 2);
+    if (!parts.length) continue;
+    const name = eff ? t.id : t.id + ' судалгааны бус зам';
+    k += '<Placemark><name>' + esc(name) + '</name><description>' + esc(desc) + '</description><styleUrl>#' + (eff ? 'eff' : 'off') + '</styleUrl><MultiGeometry>'
+      + parts.map((s) => '<LineString><tessellate>1</tessellate><coordinates>' + line(s.points) + '</coordinates></LineString>').join('') + '</MultiGeometry></Placemark>';
   }
   for (const e of run.events) {
     const nm = { start: 'эхэлсэн', pause: 'түр зогссон', resume: 'дахин эхэлсэн', end: 'дууссан' }[e.type];
