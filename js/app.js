@@ -391,14 +391,7 @@ async function newSurveyView(editId) {
     s.driver = document.getElementById('driver').value;
     researchers = [...document.querySelectorAll('[data-r]')].map((i) => i.value);
   };
-  actions.delsurvey = async () => {
-    if (!(await confirmBox('Устгах уу?', `<b>${h(existing.name)}</b> судалгааны бүх замнал, бүртгэл, зураг устгагдана.`, 'Устгах', 'Болих', 'danger'))) return;
-    if (!(await confirmBox(`Та "${h(existing.name)}" судалгааг устгахдаа итгэлтэй байна уу?`, 'Устгасныг буцаах боломжгүй.', 'Тийм, устгах', 'Болих', 'danger'))) return;
-    await deleteSurvey(existing);
-    toast('Судалгаа устгагдлаа');
-    sync.syncAll();
-    go('#/');
-  };
+  actions.delsurvey = () => askDeleteSurvey(existing);
   actions.addr = () => { keep(); researchers.push(''); render(); };
   actions.rec = (el) => { keep(); s.recorder = el.dataset.n; render(); };
   actions.save = async () => {
@@ -539,6 +532,7 @@ async function surveyView(sid) {
         </div>`;
       }).join('')}
       <div id="report">${reportHtml(survey, sightsAll, stats, !!closed.__repOpen)}</div>
+      ${survey.test ? '<button class="btn danger" data-act="deltest">Туршилтын судалгаа устгах</button>' : ''}
     </div>
     <div class="footbar">
       <button class="btn grow" data-act="sendall">Бүх өгөгдлийг имэйлээр</button>
@@ -552,6 +546,7 @@ async function surveyView(sid) {
   actions.repmode = (el) => { reportMode = el.dataset.m; if (reportMode === 'all') reportSel = ''; redrawReport(); };
   actions.togrep = async () => { closed.__repOpen = !closed.__repOpen; await db.setMeta('closed-' + sid, closed); redrawReport(); };
   actions.tog = async (el) => { closed[el.dataset.k] = !closed[el.dataset.k]; await db.setMeta('closed-' + sid, closed); surveyView(sid); };
+  actions.deltest = () => askDeleteSurvey(survey);
   actions.syncnow = () => { if (!navigator.onLine) toast('Интернэт алга. Холбогдмогц өөрөө илгээнэ.', 'warn'); sync.syncAll(); };
   actions.sendall = async () => {
     toast('Файл бэлдэж байна...');
@@ -689,6 +684,15 @@ async function deleteRun(survey, t, run) {
   const fresh = { ...newRun(survey, t), sheetId: run.key + '|' + now, rev: now };
   await db.put('runs', fresh);
   return fresh;
+}
+
+async function askDeleteSurvey(survey) {
+  if (!(await confirmBox('Устгах уу?', `<b>${h(survey.name)}</b> судалгааны бүх замнал, бүртгэл, зураг устгагдана.`, 'Устгах', 'Болих', 'danger'))) return;
+  if (!(await confirmBox(`Та "${h(survey.name)}" судалгааг устгахдаа итгэлтэй байна уу?`, 'Устгасныг буцаах боломжгүй.', 'Тийм, устгах', 'Болих', 'danger'))) return;
+  await deleteSurvey(survey);
+  toast('Судалгаа устгагдлаа');
+  sync.syncAll();
+  go('#/');
 }
 
 // Судалгаа устгах. Sheet холбогдсон бол "Устгасан" гэж тэмдэглэнэ, үгүй бол утаснаас бүр мөсөн устгана.
