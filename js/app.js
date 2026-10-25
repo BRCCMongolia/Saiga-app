@@ -7,7 +7,7 @@ import * as sync from './sync.js';
 import { GUIDE, METHOD } from './content.js';
 import {
   QUICK_SPECIES, CARCASS_OPTIONS, codeFromLatin, runKey, newRun, getRun, runEnds, lineLengthM, runStats, segments,
-  fmtDate, fmtTime, fmtDur, STATUS_MN,
+  fmtDate, fmtTime, fmtDur, STATUS_MN, transectRow,
 } from './model.js';
 import { h, toast, modal, confirmBox, beep, unlockAudio, keepAwake, compressImage, ICON } from './ui.js';
 
@@ -72,11 +72,11 @@ const topbar = (title, back = '#/', extra = '') => `<header class="top"><a class
 
 // ---------- нүүр ----------
 async function homeView() {
-  const surveys = (await db.all('surveys')).sort((a, b) => b.createdAt - a.createdAt);
+  const surveys = (await db.all('surveys')).filter((x) => !x.deleted).sort((a, b) => b.createdAt - a.createdAt);
   const runs = await db.all('runs');
   const active = runs.find((r) => r.status === 'active' || r.status === 'returning');
   const rows = surveys.map((s) => {
-    const rs = runs.filter((r) => r.surveyId === s.id);
+    const rs = runs.filter((r) => r.surveyId === s.id && r.status !== 'deleted');
     const done = rs.filter((r) => r.status === 'done' || r.status === 'incomplete').length;
     const finished = done === s.transects.length && s.transects.length > 0;
     return `<a class="card survey" href="#/s/${encodeURIComponent(s.id)}">
@@ -96,6 +96,7 @@ async function homeView() {
       <div class="brand"><img src="img/icon-192.png" alt="" class="appicon"><div><h1>Saiga survey</h1><p>Бөхөн тооллого · шугаман трансект</p></div></div>
     </div>
     <div class="pad col">
+      ${settings.sim ? '<a class="note" href="#/settings"><b>Туршилтын горим асаалттай</b> (дуураймал GPS). Жинхэнэ судалгааны өмнө Тохиргооноос унтраана уу.</a>' : ''}
       ${active ? `<a class="banner yellow" href="#/run/${encodeURIComponent(active.surveyId)}/${encodeURIComponent(active.tid)}"><b>${h(active.tid)} ${active.status === 'active' ? 'замнал явж байна' : 'түр зогссон'}</b><span>Үргэлжлүүлэх ›</span></a>` : ''}
       <div class="grid2">
         <a class="card tile" href="#/guide">${ICON.book}<b>Удирдамж</b><span class="muted small">Зорилго, шаардлага</span></a>
@@ -339,6 +340,7 @@ async function newSurveyView(editId) {
         ${existing ? '' : '<label class="link">Файл<input type="file" id="tfile" accept=".gpx,.kml,.csv,.geojson,.json" hidden></label>'}</div>
       </div>
       <button class="btn big primary" data-act="save">${existing ? 'Хадгалах' : 'Эхлэх'}</button>
+      ${existing ? '<button class="btn danger" data-act="delsurvey">Судалгаа устгах</button><p class="muted small hint">Жишээ нь туршилтын судалгааг жинхэнэ судалгааны өмнө устгана.</p>' : ''}
     </div>`;
     const tf = document.getElementById('tfile');
     if (tf) tf.addEventListener('change', async (e) => {
@@ -355,6 +357,14 @@ async function newSurveyView(editId) {
     s.leader = document.getElementById('leader').value;
     s.driver = document.getElementById('driver').value;
     researchers = [...document.querySelectorAll('[data-r]')].map((i) => i.value);
+  };
+  actions.delsurvey = async () => {
+    if (!(await confirmBox('Устгах уу?', `<b>${h(existing.name)}</b> судалгааны бүх замнал, бүртгэл, зураг устгагдана.`, 'Устгах', 'Болих', 'danger'))) return;
+    if (!(await confirmBox(`Та "${h(existing.name)}" судалгааг устгахдаа итгэлтэй байна уу?`, 'Устгасныг буцаах боломжгүй.', 'Тийм, устгах', 'Болих', 'danger'))) return;
+    await deleteSurvey(existing);
+    toast('Судалгаа устгагдлаа');
+    sync.syncAll();
+    go('#/');
   };
   actions.addr = () => { keep(); researchers.push(''); render(); };
   actions.rec = (el) => { keep(); s.recorder = el.dataset.n; render(); };
@@ -434,7 +444,7 @@ function parseTransects(text, name) {
 // ---------- судалгаа: трансектын жагсаалт ----------
 async function surveyView(sid) {
   const survey = await db.get('surveys', sid);
-  if (!survey) return go('#/');
+  if (!survey || survey.deleted) return go('#/');
   const runs = {}, pts = {};
   for (const t of survey.transects) {
     runs[t.id] = (await db.get('runs', runKey(sid, t.id))) || newRun(survey, t);
@@ -562,7 +572,7 @@ function reportHtml(survey, sights, stats, open) {
 // ---------- трансектын дэлгэрэнгүй ----------
 async function detailView(sid, tid) {
   const survey = await db.get('surveys', sid);
-  if (!survey) return go('#/');
+  if (!survey || survey.deleted) return go('#/');
   const t = survey.transects.find((x) => x.id === tid);
   const run = await getRun(survey, t);
   const points = await db.byIndex('points', 'run', run.key);
@@ -593,6 +603,7 @@ async function detailView(sid, tid) {
       </div>
       ${run.status !== 'new' ? `<a class="btn" href="#/run/${encodeURIComponent(sid)}/${encodeURIComponent(tid)}">Газрын зургаар нээх</a>` : ''}
       <button class="btn" data-act="zipt">Энэ трансектын өгөгдөл илгээх (ZIP)</button>
+      ${run.status !== 'new' ? '<button class="btn danger" data-act="delrun">Замнал устгах</button>' : ''}
     </div>
   </div>`;
   const map = L.map('dmap', { zoomControl: false, attributionControl: false });
@@ -609,13 +620,55 @@ async function detailView(sid, tid) {
     const s = await db.get('sightings', el.dataset.id);
     if (s && !s.deleted) openRecord({ survey, t, sighting: s, onDone: () => detailView(sid, tid) });
   };
+  actions.delrun = async () => {
+    if (!(await confirmBox('Устгах уу?', `${h(tid)} замналын GPS зам болон бүртгэл (${sights.filter((x) => !x.deleted).length}) устгагдаж, замнал "Эхлээгүй" болно. Google Sheet-д "Устгасан" гэж тэмдэглэгдэнэ.`, 'Устгах', 'Болих', 'danger'))) return;
+    if (!(await confirmBox(`Та ${h(tid)} замналыг устгахдаа итгэлтэй байна уу?`, 'Устгасныг буцаах боломжгүй.', 'Тийм, устгах', 'Болих', 'danger'))) return;
+    await deleteRun(survey, t, run);
+    toast(tid + ' замнал устгагдлаа');
+    sync.syncAll();
+    go('#/s/' + encodeURIComponent(sid));
+  };
   actions.zipt = async () => {
     toast('Файл бэлдэж байна...');
     try { const z = await exp.zipTransect(survey, tid); await exp.shareFile(z.blob, z.name, survey.name + ' ' + tid); } catch (e) { console.error(e); toast('Алдаа: ' + e.message, 'err', 5000); }
   };
 }
 
+// Замнал устгах: Sheet-д "Устгасан" мөр үлдээж, замналыг эхлээгүй болгоно.
+async function deleteRun(survey, t, run) {
+  const now = Date.now();
+  const points = await db.byIndex('points', 'run', run.key);
+  const row = transectRow(run, t, points, survey);
+  row['Төлөв'] = 'Устгасан';
+  await db.put('runs', { key: run.key + '|del|' + now, surveyId: survey.id, tid: t.id, status: 'deleted', row, synced: false, rev: now });
+  for (const x of await db.byIndex('sightings', 'survey', survey.id)) {
+    if (x.tid === t.id && !x.deleted) { x.deleted = true; x.synced = false; x.rev = now; await db.put('sightings', x); }
+  }
+  for (const p of points) await db.del('points', p.n);
+  await db.put('runs', { ...newRun(survey, t), sheetId: run.key + '|' + now, rev: now });
+}
+
+// Судалгаа устгах. Sheet холбогдсон бол "Устгасан" гэж тэмдэглэнэ, үгүй бол утаснаас бүр мөсөн устгана.
+async function deleteSurvey(survey) {
+  const runs = await db.byIndex('runs', 'survey', survey.id);
+  const sights = await db.byIndex('sightings', 'survey', survey.id);
+  if (await db.getMeta('sheetUrl', '')) {
+    for (const t of survey.transects) {
+      const run = runs.find((r) => r.key === runKey(survey.id, t.id));
+      if (run && run.status !== 'new') await deleteRun(survey, t, run);
+    }
+    for (const x of await db.byIndex('sightings', 'survey', survey.id)) if (!x.deleted) { x.deleted = true; x.synced = false; x.rev = Date.now(); await db.put('sightings', x); }
+    await db.put('surveys', { ...survey, deleted: true });
+    return;
+  }
+  for (const r of runs) { for (const p of await db.byIndex('points', 'run', r.key)) await db.del('points', p.n); await db.del('runs', r.key); }
+  for (const x of sights) { for (const pid of x.photos || []) await db.del('photos', pid); await db.del('sightings', x.id); }
+  await db.del('surveys', survey.id);
+}
+
 function baseLayer(map) {
+  map.getContainer().classList.toggle('nomap', settings.layer === 'none');
+  if (settings.layer === 'none') return L.layerGroup().addTo(map);
   const layer = L.tileLayer(TILE[settings.layer] || TILE.topo, { maxZoom: 17, maxNativeZoom: 16, attribution: TILE_ATTR, crossOrigin: true });
   layer.addTo(map);
   return layer;
@@ -630,7 +683,7 @@ function sightMarker(s) {
 // ---------- замнал явах (навигац) ----------
 async function runView(sid, tid) {
   const survey = await db.get('surveys', sid);
-  if (!survey) return go('#/');
+  if (!survey || survey.deleted) return go('#/');
   const t = survey.transects.find((x) => x.id === tid);
   const run = await getRun(survey, t);
   const allPts = await db.byIndex('points', 'run', run.key);
@@ -749,10 +802,10 @@ async function runView(sid, tid) {
   addEventListener('resize', onResize);
   cleanup.push(() => removeEventListener('resize', onResize));
   actions.layer = async () => {
-    settings.layer = settings.layer === 'sat' ? 'topo' : 'sat';
+    settings.layer = { topo: 'sat', sat: 'none' }[settings.layer] || 'topo';
     await saveSettings();
-    map.removeLayer(tiles); tiles = baseLayer(map); tiles.bringToBack();
-    toast(settings.layer === 'sat' ? 'Хиймэл дагуулын зураг' : 'Байр зүйн зураг');
+    map.removeLayer(tiles); tiles = baseLayer(map); if (tiles.bringToBack) tiles.bringToBack();
+    toast({ sat: 'Хиймэл дагуулын зураг', none: 'Зөвхөн зураас (газрын зураггүй)' }[settings.layer] || 'Байр зүйн зураг');
   };
   actions.list = async () => {
     const list = await drawSights();

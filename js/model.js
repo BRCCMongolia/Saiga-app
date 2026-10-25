@@ -132,7 +132,7 @@ export function transectRow(run, t, points, survey) {
     'Дууссан огноо': l ? fmtDate(l.t) : '', 'Дууссан цаг': l ? fmtTime(l.t) : '',
     'Дууссан өргөрөг': l ? r5(l.lat) : '', 'Дууссан уртраг': l ? r5(l.lon) : '', 'Дууссан өндөр': l && l.alt != null ? Math.round(l.alt) : '',
     'Түр зогсолт': pauses, 'Дутуу шалтгаан': run.incompleteReason || '',
-    'бүртгэгч': survey.recorder || '', 'судалгаа': survey.name, 'id': run.key,
+    'бүртгэгч': survey.recorder || '', 'судалгаа': survey.name, 'id': run.sheetId || run.key,
   };
 }
 

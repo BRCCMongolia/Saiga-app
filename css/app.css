@@ -270,3 +270,6 @@ textarea.inp { resize: vertical; }
 .grid4 { display: grid; grid-template-columns: 1fr 1fr 0.9fr 0.9fr; gap: 6px; }
 .rstats b { font-size: 18px; }
 .rstats b.fast { color: #FF8A80; }
+
+.leaflet-container.nomap { background: #F7F3EA; }
+a.note { display: block; text-decoration: none; }

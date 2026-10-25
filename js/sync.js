@@ -81,6 +81,8 @@ export async function syncAll() {
         runRows.push(transectRow(run, t, pts, survey));
         runDone.push(run);
       }
+      // Устгасан замнал: хуучин мөрийг "Устгасан" болгоно
+      for (const d of (await db.byIndex('runs', 'survey', survey.id)).filter((x) => x.status === 'deleted' && !x.synced)) { runRows.push(d.row); runDone.push(d); }
       if (runRows.length) await post(url, { action: 'upsert', sheet: 'Трансект', headers: TRANSECT_HEADERS, key: 'id', rows: runRows });
       for (const r of runDone) {
         const cur = await db.get('runs', r.key);
