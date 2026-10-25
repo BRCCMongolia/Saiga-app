@@ -739,7 +739,7 @@ async function runView(sid, tid) {
   $app.innerHTML = `<div class="runscreen">
     <div id="rmap" class="rmap"></div>
     <div class="rtop">
-      <div class="row between"><b class="big">${h(tid)}</b><span class="small" id="rstate"></span></div>
+      <div class="row between"><span class="row gap"><b class="big">${h(tid)}</b><span class="gpsacc" id="sacc">GPS –</span></span><span class="small" id="rstate"></span></div>
       <div class="grid4 rstats">
         <div><span>Явсан</span><b id="sdone">0.0 км</b></div>
         <div><span>Үлдсэн</span><b id="sleft">${(L_M / 1000).toFixed(1)} км</b></div>
@@ -1037,8 +1037,10 @@ async function runView(sid, tid) {
     const prev = R.fix;
     R.fix = f;
     R.lastFixAt = Date.now();
-    // GPS нарийвчлал муу (50 м-ээс их) 3 удаа дараалбал сануулна
-    R.badAcc = f.acc != null && f.acc > 50 ? (R.badAcc || 0) + 1 : 0;
+    const accEl = document.getElementById('sacc');
+    if (accEl) { const a = f.acc != null ? Math.round(f.acc) : null; accEl.textContent = a != null ? `GPS ±${a} м` : 'GPS'; accEl.className = 'gpsacc ' + (a == null ? '' : a <= 10 ? 'ok' : a <= 25 ? 'mid' : 'bad'); }
+    // GPS нарийвчлал муу (25 м-ээс их) 3 удаа дараалбал сануулна
+    R.badAcc = f.acc != null && f.acc > 25 ? (R.badAcc || 0) + 1 : 0;
     if (R.badAcc >= 3) gpsWarn();
     else if (R.badAcc === 0 && R.gpsBad) { R.gpsBad = false; banner('GPS сайжирлаа', 'green', 2500); }
     const ll = [f.lat, f.lon];
@@ -1052,13 +1054,15 @@ async function runView(sid, tid) {
     const along = Math.max(0, Math.min(L_M, fr.along));
     // Бичлэг
     const recording = run.status === 'active' || run.status === 'returning';
-    if (recording && (f.acc == null || f.acc <= 50)) {
+    if (recording && (f.acc == null || f.acc <= 25)) {
       const effort = run.status === 'active';
       const lp = R.lastPt;
       const moved = !lp || lp.seg !== run.seg ? Infinity : geo.distance(lp.lat, lp.lon, f.lat, f.lon);
       // Зогсож байхад GPS-ийн хэлбэлзлийг зам гэж тоолохгүй (хурд < 3 км/ц бол 25 м-ээс бага шилжилтийг алгасна)
       const still = f.speed != null && f.speed < 0.8 && moved < 25;
-      if (moved >= 5 && !still) {
+      // GPS үсрэлт: өмнөх цэгээс секундэд 40 м-ээс хурдан шилжсэн мэт бол алгасна (дуураймал GPS-д хамаарахгүй)
+      const jump = !f.sim && lp && moved !== Infinity && f.t > lp.t && moved / ((f.t - lp.t) / 1000) > 40;
+      if (moved >= 5 && !still && !jump) {
         const p = { runKey: run.key, seg: run.seg, effort, t: f.t, lat: f.lat, lon: f.lon, alt: f.alt ?? null, acc: f.acc ?? null };
         if (lp && lp.seg === run.seg && effort && moved !== Infinity) R.effortM += moved;
         R.lastPt = p;
@@ -1067,7 +1071,7 @@ async function runView(sid, tid) {
         if (key !== curKey) { curLine = L.polyline([], lineStyle(effort)).addTo(map); curKey = key; }
         curLine.addLatLng(ll);
       }
-      if (effort && along > (run.maxAlong || 0)) { run.maxAlong = along; R.dirty = true; }
+      if (effort && !jump && along > (run.maxAlong || 0)) { run.maxAlong = along; R.dirty = true; }
     }
     // Мэдээлэл
     const st = runStats(run, t, []);

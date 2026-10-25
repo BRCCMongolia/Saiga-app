@@ -291,3 +291,7 @@ a.note { display: block; text-decoration: none; }
 .rscale i { display: block; height: 6px; border: 2px solid #1F2A24; border-top: 0; background: rgba(255,255,255,.6); }
 .rscale span { font-size: 12px; font-weight: 700; color: #1F2A24; background: rgba(255,255,255,.75); padding: 0 4px; border-radius: 4px; }
 .leaflet-control-scale-line { font-size: 12px; font-weight: 700; background: rgba(255,255,255,.75); border-color: #1F2A24; color: #1F2A24; }
+.gpsacc { font-size: 13px; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: rgba(255,255,255,.15); color: #fff; white-space: nowrap; }
+.gpsacc.ok { background: #2E7D4F; }
+.gpsacc.mid { background: #F2C94C; color: #3D2E00; }
+.gpsacc.bad { background: #C62828; }
