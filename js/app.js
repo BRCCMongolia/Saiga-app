@@ -1319,7 +1319,8 @@ async function runView(sid, tid) {
         if (!R.nearNotified) { beep(2, 880); R.nearNotified = true; }
       } else {
         R.nearNotified = false;
-        alertBox(`Шугам хүртэл ${fmtKm(Math.abs(fr.cross))} · ${relDir(f, back)}`, 'info');
+        // Шугамын үргэлжлэл дээр бол төгсгөл/эхлэл цэг хүртэлх зайг харуулна
+        alertBox(`Шугам хүртэл ${fmtKm(geo.distance(f.lat, f.lon, back[0], back[1]))} · ${relDir(f, back)}`, 'info');
       }
       return;
     }
