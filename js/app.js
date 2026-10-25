@@ -1111,7 +1111,6 @@ async function runView(sid, tid) {
     if (Math.abs(fr.cross) > 100 && !(await confirmBox('Шугамаас хол байна', `Шугамаас ${Math.round(Math.abs(fr.cross))} м зайтай байна. Энд эхлэх үү?`, 'Эхлэх', 'Болих'))) return;
     run.seg = (run.seg || 0) + 1;
     event('resume');
-    R.autoFinishing = false;
     run.status = 'active';
     run.incompleteReason = '';
     await saveRun();
@@ -1164,16 +1163,6 @@ async function runView(sid, tid) {
     const rs = await Promise.all(survey.transects.map((x) => db.get('runs', runKey(sid, x.id))));
     if (rs.every((r) => r && (r.status === 'done' || r.status === 'incomplete'))) { survey.endDate = Date.now(); await db.put('surveys', survey); }
     sync.syncAll();
-  };
-  // Төгсгөлөөс 500 м цааш явсан ч "Дуусгах" дараагүй бол автоматаар дуусгана
-  const autoFinish = async () => {
-    if (R.autoFinishing) return;
-    R.autoFinishing = true;
-    await completeRun('');
-    bottom();
-    alertBox('', '');
-    banner(`${tid} төгсгөлөөс 500 м өнгөрсөн тул автоматаар дуусгалаа`, 'green', 10000);
-    beep(3, 990);
   };
   // Нэг удаад зөвхөн нэг замнал: өөр замнал дуусаагүй бол шинийг эхлүүлэхгүй
   const otherOpen = async () => {
@@ -1336,8 +1325,23 @@ async function runView(sid, tid) {
     }
     guide.setLatLngs([]);
     if (run.status !== 'active') { alertBox('', ''); return; }
-    if (fr.along >= L_M + 500 && f.acc != null && f.acc <= 25 || fr.along >= L_M + 500 && f.sim) return autoFinish();
-    if (fr.along >= L_M - 30 && !R.endNotified) { R.endNotified = true; beep(3, 990); banner('Төгсгөлд хүрлээ. "Дуусгах" дарна уу. 500 м цааш явбал автоматаар дуусна.', 'green', 8000); }
+    // Төгсгөлд хүрсэн: "Дуусгах" эсвэл "Түр зогсоох" дартал том улаан анхааруулга, 20 секунд тутам дуут дохио
+    // Цааш холдох тусам чангарна: 100 м хүртэл 20 сек тутам, 300 м хүртэл 10 сек, түүнээс цааш 5 сек тутам
+    if (fr.along >= L_M - 30) {
+      const past = Math.max(0, Math.round(fr.along - L_M));
+      alertBox('Замнал дууслаа. "Дуусгах" дарна уу.', 'red', '', past >= 30 ? `Төгсгөлөөс ${past} м өнгөрлөө` : `${tid} төгсгөлд хүрлээ`);
+      const lvl = past < 100 ? 0 : past < 300 ? 1 : 2;
+      const every = [20000, 10000, 5000][lvl];
+      if (Date.now() - (R.endBeepAt || 0) > every || lvl > (R.endLvl ?? -1)) {
+        R.endBeepAt = Date.now(); R.endLvl = lvl;
+        if (lvl === 0) beep(2, 990, 0.25, 0.6);
+        else if (lvl === 1) beep(3, 1100, 0.3, 0.9, 'square');
+        else beep(4, 1400, 0.3, 1, 'square');
+        try { navigator.vibrate && navigator.vibrate(lvl ? [500, 150, 500, 150, 500] : [300, 150, 300]); } catch (e) {}
+      }
+      return;
+    }
+    R.endLvl = -1;
     // Нарийвчлал муу (25 м-ээс их) цэгээр хазайлтын дохио өөрчлөхгүй
     if (f.acc != null && f.acc > 25) return;
     const x = Math.abs(fr.cross);

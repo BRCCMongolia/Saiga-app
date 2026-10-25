@@ -42,17 +42,17 @@ export function unlockAudio() {
     if (actx.state === 'suspended') actx.resume();
   } catch (e) { /* ignore */ }
 }
-export function beep(times = 1, freq = 880, dur = 0.18) {
+export function beep(times = 1, freq = 880, dur = 0.18, gain = 0.5, wave = 'sine') {
   try {
     unlockAudio();
     if (!actx) return;
     for (let i = 0; i < times; i++) {
       const o = actx.createOscillator(), g = actx.createGain();
-      o.frequency.value = freq;
+      o.frequency.value = freq; o.type = wave;
       o.connect(g); g.connect(actx.destination);
       const t0 = actx.currentTime + i * (dur + 0.12);
       g.gain.setValueAtTime(0.0001, t0);
-      g.gain.exponentialRampToValueAtTime(0.5, t0 + 0.02);
+      g.gain.exponentialRampToValueAtTime(gain, t0 + 0.02);
       g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
       o.start(t0); o.stop(t0 + dur + 0.02);
     }
