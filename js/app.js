@@ -771,7 +771,7 @@ async function runView(sid, tid) {
   const R = {
     fix: null, follow: true, locked: false, lastPt: allPts[allPts.length - 1] || null,
     effortM: runStats(run, t, allPts).effortKm * 1000, fast: 0, alertLevel: 0, nearNotified: false, endNotified: false,
-    startNotified: false, lastAlertBeep: 0, pendingSave: Promise.resolve(),
+    startNotified: false, lastAlertBeep: 0, pendingSave: Promise.resolve(), warm: false, lastGoodAt: 0,
   };
   $app.innerHTML = `<div class="runscreen">
     <div id="rmap" class="rmap"></div>
@@ -1074,8 +1074,15 @@ async function runView(sid, tid) {
     const prev = R.fix;
     R.fix = f;
     R.lastFixAt = Date.now();
+    // GPS дулаацах: эхлэхэд болон 10 секундээс удаан тасарсны дараа ±15 м-ээс сайн цэг иртэл зам бичихгүй
+    if (f.sim || f.acc == null) R.warm = true;
+    else {
+      if (R.warm && Date.now() - (R.lastGoodAt || 0) > 10000) R.warm = false;
+      if (f.acc <= 15) R.warm = true;
+      if (f.acc <= 25) R.lastGoodAt = Date.now();
+    }
     const accEl = document.getElementById('sacc');
-    if (accEl) { const a = f.acc != null ? Math.round(f.acc) : null; accEl.textContent = a != null ? `GPS ±${a} м` : 'GPS'; accEl.className = 'gpsacc ' + (a == null ? '' : a <= 10 ? 'ok' : a <= 25 ? 'mid' : 'bad'); }
+    if (accEl) { const a = f.acc != null ? Math.round(f.acc) : null; accEl.textContent = a != null ? (R.warm ? `GPS ±${a} м` : `GPS барьж байна… ±${a} м`) : 'GPS'; accEl.className = 'gpsacc ' + (a == null ? '' : a <= 10 ? 'ok' : a <= 25 ? 'mid' : 'bad'); }
     // GPS нарийвчлал муу (25 м-ээс их) 3 удаа дараалбал сануулна
     R.badAcc = f.acc != null && f.acc > 25 ? (R.badAcc || 0) + 1 : 0;
     if (R.badAcc >= 3) gpsWarn();
@@ -1091,7 +1098,7 @@ async function runView(sid, tid) {
     const along = Math.max(0, Math.min(L_M, fr.along));
     // Бичлэг
     const recording = run.status === 'active' || run.status === 'returning';
-    if (recording && (f.acc == null || f.acc <= 25)) {
+    if (recording && R.warm && (f.acc == null || f.acc <= 25)) {
       const effort = run.status === 'active';
       const lp = R.lastPt;
       const moved = !lp || lp.seg !== run.seg ? Infinity : geo.distance(lp.lat, lp.lon, f.lat, f.lon);
@@ -1099,7 +1106,7 @@ async function runView(sid, tid) {
       const still = f.speed != null && f.speed < 0.8 && moved < 25;
       // GPS үсрэлт: өмнөх цэгээс секундэд 40 м-ээс хурдан шилжсэн мэт бол алгасна (дуураймал GPS-д хамаарахгүй)
       const jump = !f.sim && lp && moved !== Infinity && f.t > lp.t && moved / ((f.t - lp.t) / 1000) > 40;
-      if (moved >= 5 && !still && !jump) {
+      if (moved >= 10 && !still && !jump) {
         const p = { runKey: run.key, seg: run.seg, effort, t: f.t, lat: f.lat, lon: f.lon, alt: f.alt ?? null, acc: f.acc ?? null };
         if (lp && lp.seg === run.seg && effort && moved !== Infinity) R.effortM += moved;
         R.lastPt = p;
