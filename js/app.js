@@ -347,7 +347,7 @@ async function newSurveyView(editId) {
   const now = new Date();
   const existing = editId ? await db.get('surveys', editId) : null;
   const s = existing || {
-    name: `Шарга, баг 4, ${now.getFullYear()} оны ${now.getMonth() + 1}-р сар`.replace('Шарга, баг 4', 'Баг-4, Шарга'),
+    name: `Баг-4, Шарга, ${now.getFullYear()} он`,
     leader: '', researchers: ['', '', ''], driver: '', recorder: '', transects: DEFAULT_TRANSECTS,
   };
   let transects = s.transects;

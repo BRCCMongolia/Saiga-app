@@ -139,7 +139,7 @@ export function transectRow(run, t, points, survey) {
 export function fileBase(survey) {
   const d = new Date(survey.createdAt);
   const tr = (s) => translit(s || '').replace(/[^A-Za-z0-9]+/g, '');
-  return 'Bag4_Sharga_' + d.getFullYear() + '-' + pad(d.getMonth() + 1) + '_' + (tr(survey.recorder) || 'X');
+  return 'Bag4_Sharga_' + d.getFullYear() + '_' + (tr(survey.recorder) || 'X');
 }
 
 const TR = { а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'yo', ж: 'j', з: 'z', и: 'i', й: 'i', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', ө: 'u', п: 'p', р: 'r', с: 's', т: 't', у: 'u', ү: 'u', ф: 'f', х: 'kh', ц: 'ts', ч: 'ch', ш: 'sh', щ: 'sh', ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu', я: 'ya' };
