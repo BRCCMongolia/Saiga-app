@@ -117,5 +117,6 @@ export async function testUrl(url) {
 export async function emailZip(blob, name, subject, body, folder) {
   const url = await db.getMeta('sheetUrl', '');
   if (!url || !navigator.onLine) return null;
-  return post(url, { action: 'email', name, subject, body, folder, data: await blobToBase64(blob) });
+  // Том файл удаан явдаг тул 5 минут хүлээнэ (эрт тасалбал давхар илгээгдэж болно)
+  return post(url, { action: 'email', name, subject, body, folder, data: await blobToBase64(blob) }, 300000);
 }

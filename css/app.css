@@ -310,3 +310,7 @@ a.note { display: block; text-decoration: none; }
 .smapedge { position: absolute; z-index: 460; transform: translate(-50%, -50%); background: #1D4ED8; color: #fff; font-size: 12px; font-weight: 800; padding: 3px 8px; border-radius: 999px; white-space: nowrap; box-shadow: 0 1px 4px rgba(0,0,0,.25); pointer-events: none; }
 .zoombar .btn[data-z] { min-width: 44px; font-size: 20px; }
 .simcard #simhead { touch-action: manipulation; padding: 6px 0; user-select: none; -webkit-user-select: none; cursor: pointer; }
+/* Замналын дээд самбар: дэлгэцийн дээд ирмэгт наалдсан, бүдгэрэлтгүй цул ногоон */
+.rtop { left: 0; right: 0; top: 0; border-radius: 0 0 var(--r) var(--r); padding: calc(10px + var(--safe-t)) 16px 12px 70px; box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+.rback { left: 14px; top: calc(14px + var(--safe-t)); }
+.ralert { top: calc(146px + var(--safe-t)); }

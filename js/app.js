@@ -1094,6 +1094,7 @@ async function runView(sid, tid) {
     if (Math.abs(fr.cross) > 100 && !(await confirmBox('Шугамаас хол байна', `Шугамаас ${Math.round(Math.abs(fr.cross))} м зайтай байна. Энд эхлэх үү?`, 'Эхлэх', 'Болих'))) return;
     run.seg = (run.seg || 0) + 1;
     event('resume');
+    R.autoFinishing = false;
     run.status = 'active';
     run.incompleteReason = '';
     await saveRun();
@@ -1134,7 +1135,11 @@ async function runView(sid, tid) {
     go('#/s/' + encodeURIComponent(sid));
   };
   const completeRun = async (reason) => {
-    if (run.status === 'active') event('end'); else event('end', { offEffort: true });
+    // Төгсгөлийг давсан бол дууссан цэгийг төлөвлөсөн төгсгөлийн цэгээр тэмдэглэнэ
+    const [S, E] = ends();
+    const over = R.fix && geo.lineFrame(S[0], S[1], E[0], E[1], R.fix.lat, R.fix.lon).along > L_M + 30;
+    const at = over ? { lat: E[0], lon: E[1], alt: null } : {};
+    if (run.status === 'active') event('end', at); else event('end', { offEffort: true });
     run.status = reason ? 'incomplete' : 'done';
     run.incompleteReason = reason;
     await saveRun();
@@ -1155,10 +1160,12 @@ async function runView(sid, tid) {
   };
   // Нэг удаад зөвхөн нэг замнал: өөр замнал дуусаагүй бол шинийг эхлүүлэхгүй
   const otherOpen = async () => {
-    const o = (await db.byIndex('runs', 'survey', sid)).find((r) => r.key !== run.key && ['active', 'returning', 'paused'].includes(r.status));
+    const live = new Set((await db.all('surveys')).filter((x) => !x.deleted).map((x) => x.id));
+    // Түр зогсоосон замнал саад болохгүй (цастай бол орхиод дараа нь ирж болно)
+    const o = (await db.all('runs')).find((r) => r.key !== run.key && live.has(r.surveyId) && r.status === 'active');
     if (!o) return false;
-    const go2 = await confirmBox(`${o.tid} замнал дуусаагүй байна`, `Нэг удаад нэг замнал явна. Эхлээд ${o.tid} замналыг "Дуусгах" дарж дуусгана уу.`, `${o.tid} нээх`, 'Болих');
-    if (go2) go('#/run/' + encodeURIComponent(sid) + '/' + encodeURIComponent(o.tid));
+    const go2 = await confirmBox(`${o.tid} замнал дуусаагүй байна`, `Нэг удаад нэг замнал явна. Эхлээд ${o.tid} замналыг "Дуусгах" эсвэл "Түр зогсоох" дарна уу.`, `${o.tid} нээх`, 'Болих');
+    if (go2) go('#/run/' + encodeURIComponent(o.surveyId) + '/' + encodeURIComponent(o.tid));
     return true;
   };
 
@@ -1218,7 +1225,8 @@ async function runView(sid, tid) {
     // Бичлэг
     const recording = run.status === 'active' || run.status === 'returning';
     if (recording && R.warm && (f.acc == null || f.acc <= 25)) {
-      const effort = run.status === 'active';
+      // Төгсгөлөөс 30 м-ээс цааших замыг судалгааны зам гэж тооцохгүй
+      const effort = run.status === 'active' && fr.along <= L_M + 30;
       const lp = R.lastPt;
       const moved = !lp || lp.seg !== run.seg ? Infinity : geo.distance(lp.lat, lp.lon, f.lat, f.lon);
       // Зогсож байхад GPS-ийн хэлбэлзлийг зам гэж тоолохгүй (хурд < 3 км/ц бол 25 м-ээс бага шилжилтийг алгасна)
@@ -1226,11 +1234,19 @@ async function runView(sid, tid) {
       const spd = f.speed != null ? f.speed : lp && moved !== Infinity && f.t > lp.t ? moved / ((f.t - lp.t) / 1000) : null;
       const still = spd != null && spd < 0.8 && moved < 25;
       // GPS үсрэлт: өмнөх цэгээс секундэд 40 м-ээс хурдан шилжсэн мэт бол алгасна (дуураймал GPS-д хамаарахгүй)
-      const jump = !f.sim && lp && moved !== Infinity && f.t > lp.t && moved / ((f.t - lp.t) / 1000) > 40;
+      // GPS үсрэлт: өмнөх GPS цэгээс (бичигдээгүй ч) секундэд 40 м-ээс хурдан шилжвэл сэжигтэй.
+      // Сэжигтэй цэгийн дараа ойрхон 3 цэг дараалж ирэхэд л дахин бичнэ (үсрээд буцсан цэг 0 км нэмнэ).
+      const rp = R.rawPrev;
+      const fast = (a) => a && f.t > a.t && geo.distance(a.lat, a.lon, f.lat, f.lon) / ((f.t - a.t) / 1000) > 40;
+      if (!f.sim && fast(rp || (moved !== Infinity ? lp : null))) R.cand = 0;
+      else if (R.cand != null && ++R.cand >= 3) R.cand = null;
+      const jump = !f.sim && R.cand != null;
+      R.rawPrev = { t: f.t, lat: f.lat, lon: f.lon };
       if (moved >= 10 && !still && !jump) {
         const p = { runKey: run.key, seg: run.seg, effort, t: f.t, lat: f.lat, lon: f.lon, alt: f.alt ?? null, acc: f.acc ?? null };
         if (lp && lp.seg === run.seg && effort && moved !== Infinity) R.effortM += moved;
         R.lastPt = p;
+        if (effort) R.lastEffortPt = p;
         R.pendingSave = R.pendingSave.then(() => db.put('points', p)).catch((e) => console.error(e));
         const key = p.seg + '|' + p.effort;
         if (key !== curKey) { curLine = L.polyline([], lineStyle(effort)).addTo(map); curKey = key; }

@@ -9,6 +9,10 @@
  * 4. Google зөвшөөрөл асууна: Authorize > (Advanced > Go to ... ) > Allow.
  * 5. Гарсан /exec холбоосыг аппын Тохиргоо > Google Sheet хэсэгт тавина.
  *
+ * Шинэчлэх (өмнө нь байршуулсан бол): кодоо солиод Save > Deploy > Manage deployments >
+ * ✏️ Edit > Version: New version > Deploy. /exec холбоос хэвээр үлдэнэ.
+ * Имэйл илгээх шинэ зөвшөөрөл асуувал Authorize > Allow дарна.
+ *
  * Зургууд таны Google Drive дээр "Saiga survey зураг" хавтсанд хадгалагдана.
  * "Бүх өгөгдлийг имэйлээр" товчоор илгээсэн ZIP нь "Saiga survey илгээсэн" хавтсанд хадгалагдаж,
  * RECIPIENTS хаяг руу имэйлээр очно (20 MB-аас том бол хавсралтын оронд Drive холбоос).
@@ -96,6 +100,8 @@ function email(req) {
   var blob = Utilities.newBlob(Utilities.base64Decode(req.data), 'application/zip', req.name);
   var dir = folder(folder(DriveApp.getRootFolder(), ZIP_ROOT), req.folder || 'Бусад');
   var file = dir.createFile(blob);
+  // Drive холбоосыг хүлээн авагч нээж чаддаг болгоно (бусдад нээлттэй болгохгүй: GPS байршил агуулна)
+  RECIPIENTS.split(',').forEach(function (r) { try { file.addViewer(r.trim()); } catch (e) {} });
   var small = blob.getBytes().length < 20 * 1024 * 1024;
   var body = (req.body || '') + '\n\nDrive: ' + file.getUrl();
   var opts = { name: 'Saiga survey' };
