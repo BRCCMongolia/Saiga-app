@@ -314,3 +314,4 @@ a.note { display: block; text-decoration: none; }
 .rtop { left: 0; right: 0; top: 0; border-radius: 0 0 var(--r) var(--r); padding: calc(10px + var(--safe-t)) 16px 12px 70px; box-shadow: 0 2px 8px rgba(0,0,0,.3); }
 .rback { left: 14px; top: calc(14px + var(--safe-t)); }
 .ralert { top: calc(146px + var(--safe-t)); }
+.nowrap { white-space: nowrap; }

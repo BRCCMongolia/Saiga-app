@@ -1487,7 +1487,7 @@ function openRecord({ survey, t, obs, sighting, onDone }) {
   const newPhotos = []; // {id, blob, caption}
   let existingPhotos = [];
   let open = null; // аль тоо сонгогч нээлттэй
-  let warnedMissing = false, warnedFar = false;
+  let warnedMissing = false, warnedFar = false, warnedVeg = false;
   let vegOpen = true;
   const quick = () => QUICK_SPECIES.find((q) => q.mn === s.species) || null;
   const isQuick = (q) => (q.other ? (s.species && !QUICK_SPECIES.some((x) => x.mn === s.species) && !/ сэг$/.test(s.species)) : q.carcass ? / сэг$/.test(s.species) : s.species === q.mn);
@@ -1539,7 +1539,7 @@ function openRecord({ survey, t, obs, sighting, onDone }) {
         </div>
         <button class="btn blue" data-act2="pick">${ICON.pin} Газрын зургаас оруулах</button>
         <details class="card veg" ${vegOpen ? 'open' : ''}>
-          <summary><b>Цас, ургамал</b> <span class="muted small">(байгаа ургамлаа бөглөнө, хоосон үлдээж болно)</span></summary>
+          <summary><b class="nowrap">Цас, ургамал</b></summary>
           <div class="row between"><span></span><button class="btn small" data-act2="same">Өмнөхтэй адил</button></div>
           <div class="veggrid">
             <span>Цас, мм</span><input class="inp" type="text" inputmode="decimal" data-f="snow" aria-label="Цас, мм" placeholder="мм" value="${s.snow ?? ''}"><span></span>
@@ -1681,9 +1681,13 @@ function openRecord({ survey, t, obs, sighting, onDone }) {
       if (VEG.some((k) => s[k] < 0) || ['forbC', 'grassC', 'shrubC'].some((k) => s[k] > 100)) return err('Цас, ургамлын утга буруу байна (бүрхэц 0-100%)');
       if (s.dist != null && s.dist < 0) return err('Зай буруу байна');
       if (s.dist != null && s.dist > 3000 && !warnedFar) { warnedFar = true; return err(`Зай ${s.dist} м (${(s.dist / 1000).toFixed(1)} км) байна. Зөв бол дахин "Хадгалах" дарна уу.`, 5000); }
-      if ((s.dist == null || s.angle == null) && !keypadOnly() && !warnedMissing) {
+      if ((s.dist == null || s.angle == null) && !warnedMissing) {
         warnedMissing = true;
         return err('Зай, өнцөг бөглөөгүй байна. Тэгсээр хадгалах бол дахин "Хадгалах" дарна уу.');
+      }
+      if (['snow', 'forbH', 'forbC', 'grassH', 'grassC', 'shrubH', 'shrubC'].every((k) => s[k] == null) && !warnedVeg) {
+        warnedVeg = true;
+        return err('Цас, ургамал бөглөөгүй байна. Шаардлагагүй бол дахин "Хадгалах" дарна уу.', 5000);
       }
       if (s.dist != null && s.angle != null) { const p = geo.destination(s.obsLat, s.obsLon, s.dist, s.angle); s.animLat = p[0]; s.animLon = p[1]; } else { s.animLat = null; s.animLon = null; }
       // GPS нэр (давхцвал -2, -3)
