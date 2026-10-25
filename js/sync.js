@@ -7,9 +7,17 @@ const statusListeners = new Set();
 export function onStatus(fn) { statusListeners.add(fn); return () => statusListeners.delete(fn); }
 function status(s) { statusListeners.forEach((fn) => fn(s)); }
 
-async function post(url, payload) {
-  const res = await fetch(url, { method: 'POST', body: JSON.stringify(payload), headers: { 'Content-Type': 'text/plain;charset=utf-8' }, redirect: 'follow' });
-  const j = await res.json();
+async function post(url, payload, ms = 90000) {
+  // Гацсан хүсэлт busy-г үүрд барихгүйн тулд хугацаа тавина
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), ms);
+  let j;
+  try {
+    const res = await fetch(url, { method: 'POST', body: JSON.stringify(payload), headers: { 'Content-Type': 'text/plain;charset=utf-8' }, redirect: 'follow', signal: ac.signal });
+    j = await res.json();
+  } catch (e) {
+    throw ac.signal.aborted ? new Error('Хариу ирсэнгүй (хугацаа хэтэрлээ)') : e;
+  } finally { clearTimeout(timer); }
   if (!j.ok) throw new Error(j.error || 'Sheet алдаа');
   return j;
 }
@@ -103,4 +111,11 @@ export async function syncAll() {
 
 export async function testUrl(url) {
   return post(url, { action: 'ping' });
+}
+
+// ZIP-ийг Apps Script-ээр урьдчилан тохируулсан имэйл рүү илгээнэ. Sheet холбоогүй эсвэл интернэтгүй бол null.
+export async function emailZip(blob, name, subject, body, folder) {
+  const url = await db.getMeta('sheetUrl', '');
+  if (!url || !navigator.onLine) return null;
+  return post(url, { action: 'email', name, subject, body, folder, data: await blobToBase64(blob) });
 }

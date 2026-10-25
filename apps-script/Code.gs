@@ -10,9 +10,14 @@
  * 5. Гарсан /exec холбоосыг аппын Тохиргоо > Google Sheet хэсэгт тавина.
  *
  * Зургууд таны Google Drive дээр "Saiga survey зураг" хавтсанд хадгалагдана.
+ * "Бүх өгөгдлийг имэйлээр" товчоор илгээсэн ZIP нь "Saiga survey илгээсэн" хавтсанд хадгалагдаж,
+ * RECIPIENTS хаяг руу имэйлээр очно (20 MB-аас том бол хавсралтын оронд Drive холбоос).
  */
 
 var PHOTO_ROOT = 'Saiga survey зураг';
+var ZIP_ROOT = 'Saiga survey илгээсэн';
+// Хүлээн авах имэйл. Олон хаяг бол таслалаар: 'a@gmail.com,b@gmail.com'
+var RECIPIENTS = 'data.brcc@gmail.com';
 
 function doPost(e) {
   var lock = LockService.getScriptLock();
@@ -23,6 +28,7 @@ function doPost(e) {
     if (req.action === 'ping') out = { ok: true, sheet: SpreadsheetApp.getActive().getName() };
     else if (req.action === 'upsert') out = upsert(req);
     else if (req.action === 'photo') out = photo(req);
+    else if (req.action === 'email') out = email(req);
     else out = { ok: false, error: 'unknown action' };
     return json(out);
   } catch (err) {
@@ -83,4 +89,17 @@ function photo(req) {
   var file = ex.hasNext() ? ex.next() : dir.createFile(Utilities.newBlob(Utilities.base64Decode(req.data), req.mime || 'image/jpeg', req.name));
   if (req.caption) file.setDescription(req.caption);
   return { ok: true, url: file.getUrl() };
+}
+
+// ZIP-ийг Drive-д хадгалаад RECIPIENTS руу имэйлээр илгээнэ.
+function email(req) {
+  var blob = Utilities.newBlob(Utilities.base64Decode(req.data), 'application/zip', req.name);
+  var dir = folder(folder(DriveApp.getRootFolder(), ZIP_ROOT), req.folder || 'Бусад');
+  var file = dir.createFile(blob);
+  var small = blob.getBytes().length < 20 * 1024 * 1024;
+  var body = (req.body || '') + '\n\nDrive: ' + file.getUrl();
+  var opts = { name: 'Saiga survey' };
+  if (small) opts.attachments = [blob];
+  MailApp.sendEmail(RECIPIENTS, req.subject || req.name, body, opts);
+  return { ok: true, to: RECIPIENTS, url: file.getUrl(), attached: small };
 }

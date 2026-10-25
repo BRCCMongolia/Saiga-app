@@ -36,7 +36,7 @@ async function init() {
     const el = e.target.closest('[data-act]');
     if (el && actions[el.dataset.act]) { e.preventDefault(); actions[el.dataset.act](el, e); }
   });
-  window.addEventListener('hashchange', route);
+  window.addEventListener('hashchange', onHash);
   window.addEventListener('online', () => sync.syncAll());
   setInterval(() => sync.syncAll(), 120000);
   route();
@@ -45,9 +45,37 @@ async function init() {
 
 async function saveSettings() { await db.setMeta('settings', settings); }
 
-function go(hash) { if (location.hash === hash) route(); else location.hash = hash; }
+let goNav = false;
+function go(hash) { if (location.hash === hash) route(); else { goNav = true; location.hash = hash; } }
+
+// Утасны "буцах" товч (Android back, iOS swipe): нээлттэй цонхыг хааж, идэвхтэй замналаас асуулгүй гарахгүй
+let curHash = location.hash, skipHash = false, leaveGuard = null;
+async function onHash() {
+  if (skipHash) { skipHash = false; return; }
+  if (goNav) { goNav = false; return route(); }
+  const target = location.hash;
+  const restore = () => { skipHash = true; location.hash = curHash; };
+  if (document.querySelector('.modal-wrap')) return restore();
+  const ovs = document.querySelectorAll('.overlay');
+  if (ovs.length) {
+    const top = ovs[ovs.length - 1];
+    if (top.querySelector('[data-act2=save]')) toast('Бүртгэлээ "Хадгалах" эсвэл "Болих" дарж хаана уу', 'warn', 3500);
+    else top.remove();
+    return restore();
+  }
+  if (leaveGuard && leaveGuard()) {
+    restore();
+    if (!(await confirmBox('Замналаас гарах уу?', 'Гарвал GPS бичлэг зогсоно. Дараа нь "Нээх" дарж үргэлжлүүлж болно.', 'Гарах', 'Үлдэх'))) return;
+    leaveGuard = null;
+    location.hash = target;
+    return;
+  }
+  route();
+}
 
 async function route() {
+  curHash = location.hash;
+  leaveGuard = null;
   cleanup.forEach((fn) => { try { fn(); } catch (e) { console.error(e); } });
   cleanup = [];
   actions = {};
@@ -299,7 +327,8 @@ function tileList(bbox, zmin, zmax) {
 async function downloadTiles() {
   const st = document.getElementById('tilest');
   if (!navigator.onLine) return toast('Интернэт хэрэгтэй', 'warn');
-  const surveys = await db.all('surveys');
+  // Туршилтын болон устгасан судалгааг оруулахгүй (хол газар бол хэдэн арван мянган хавтан болно)
+  const surveys = (await db.all('surveys')).filter((x) => !x.test && !x.deleted);
   const ts = surveys.length ? surveys.flatMap((s) => s.transects) : DEFAULT_TRANSECTS;
   const lons = ts.flatMap((t) => [t.a[0], t.b[0]]), lats = ts.flatMap((t) => [t.a[1], t.b[1]]);
   const bbox = [Math.min(...lons) - 0.15, Math.min(...lats) - 0.12, Math.max(...lons) + 0.15, Math.max(...lats) + 0.12];
@@ -359,7 +388,15 @@ async function restore(e) {
   try {
     const data = JSON.parse(await f.text());
     for (const s of ['surveys', 'runs', 'sightings', 'meta']) for (const v of data[s] || []) await db.put(s, v);
-    for (const p of data.points || []) { const { n, ...rest } = p; await db.put('points', { ...rest, n }); }
+    // Цэгийн n дугаарыг хаяж шинээр олгоно (утасны өөрийн цэгийг дарж бичихгүй), runKey+t-ээр давхардлыг алгасна
+    const seen = {};
+    for (const p of data.points || []) {
+      const { n, ...rest } = p;
+      if (!seen[rest.runKey]) seen[rest.runKey] = new Set((await db.byIndex('points', 'run', rest.runKey)).map((x) => x.t));
+      if (seen[rest.runKey].has(rest.t)) continue;
+      seen[rest.runKey].add(rest.t);
+      await db.put('points', rest);
+    }
     for (const p of data.photos || []) { const b = await (await fetch(p.blob)).blob(); await db.put('photos', { ...p, blob: b }); }
     toast('Сэргээлээ', 'ok');
     go('#/');
@@ -575,7 +612,7 @@ async function surveyView(sid) {
   actions.syncnow = () => { if (!navigator.onLine) toast('Интернэт алга. Холбогдмогц өөрөө илгээнэ.', 'warn'); sync.syncAll(); };
   actions.sendall = async () => {
     toast('Файл бэлдэж байна...');
-    try { const z = await exp.zipAll(survey); await exp.shareFile(z.blob, z.name, survey.name); } catch (e) { console.error(e); toast('Алдаа: ' + e.message, 'err', 5000); }
+    try { const z = await exp.zipAll(survey); await sendZip(z, survey, survey.name + ' · бүх өгөгдөл'); } catch (e) { console.error(e); toast('Алдаа: ' + e.message, 'err', 5000); }
   };
   actions.zoomimg = () => zoomImage('img/transect-map.jpg', 'img/transect-map-rot.jpg');
   // Трансектын жижиг зураг: зөвхөн шугам, төлөвөөр өнгөтэй (явсан замгүй, интернэтгүй ажиллана)
@@ -709,7 +746,7 @@ async function detailView(sid, tid) {
       </div>
       ${run.status !== 'new' ? `<a class="btn" href="#/run/${encodeURIComponent(sid)}/${encodeURIComponent(tid)}">Газрын зургаар нээх</a>` : ''}
       <button class="btn" data-act="zipt">Энэ трансектын өгөгдөл илгээх (ZIP)</button>
-      ${run.status !== 'new' ? '<button class="btn danger" data-act="delrun">Замнал устгах</button>' : ''}
+      ${run.status !== 'new' && run.status !== 'active' ? '<button class="btn danger" data-act="delrun">Замнал устгах</button>' : ''}
     </div>
   </div>`;
   const map = L.map('dmap', { zoomControl: false, attributionControl: false });
@@ -738,8 +775,19 @@ async function detailView(sid, tid) {
   };
   actions.zipt = async () => {
     toast('Файл бэлдэж байна...');
-    try { const z = await exp.zipTransect(survey, tid); await exp.shareFile(z.blob, z.name, survey.name + ' ' + tid); } catch (e) { console.error(e); toast('Алдаа: ' + e.message, 'err', 5000); }
+    try { const z = await exp.zipTransect(survey, tid); await sendZip(z, survey, survey.name + ' · ' + tid); } catch (e) { console.error(e); toast('Алдаа: ' + e.message, 'err', 5000); }
   };
+}
+
+// Sheet холбогдсон, интернэттэй бол BRCC-ийн имэйл рүү шууд, үгүй бол утасны хуваалцах цэсээр
+async function sendZip(z, survey, subject) {
+  let r = null;
+  try {
+    if (await db.getMeta('sheetUrl', '') && navigator.onLine) toast('Имэйлээр илгээж байна...', '', 6000);
+    r = await sync.emailZip(z.blob, z.name, subject, `${survey.name}\nБүртгэгч: ${survey.recorder || '-'}\nФайл: ${z.name}`, survey.name);
+  } catch (e) { console.error(e); toast('Шууд илгээж чадсангүй: ' + e.message + '. Хуваалцах цэсээр илгээнэ үү.', 'warn', 6000); }
+  if (r) { toast(`${r.to} руу илгээлээ`, 'ok', 5000); return; }
+  await exp.shareFile(z.blob, z.name, subject);
 }
 
 async function confirmDeleteRun(survey, tid) {
@@ -962,8 +1010,10 @@ async function runView(sid, tid) {
   };
   actions.leave = async () => {
     if (run.status === 'active' && !(await confirmBox('Замналаас гарах уу?', 'Гарвал GPS бичлэг зогсоно. Дараа нь "Нээх" дарж үргэлжлүүлж болно.', 'Гарах', 'Үлдэх'))) return;
+    leaveGuard = null;
     go('#/s/' + encodeURIComponent(sid));
   };
+  leaveGuard = () => run.status === 'active';
 
   // Доод товчнууд
   const bottom = () => {
@@ -1148,7 +1198,9 @@ async function runView(sid, tid) {
       const lp = R.lastPt;
       const moved = !lp || lp.seg !== run.seg ? Infinity : geo.distance(lp.lat, lp.lon, f.lat, f.lon);
       // Зогсож байхад GPS-ийн хэлбэлзлийг зам гэж тоолохгүй (хурд < 3 км/ц бол 25 м-ээс бага шилжилтийг алгасна)
-      const still = f.speed != null && f.speed < 0.8 && moved < 25;
+      // Хурд ирээгүй утсанд сүүлийн цэгээс хойших шилжилт/хугацаагаар тооцно
+      const spd = f.speed != null ? f.speed : lp && moved !== Infinity && f.t > lp.t ? moved / ((f.t - lp.t) / 1000) : null;
+      const still = spd != null && spd < 0.8 && moved < 25;
       // GPS үсрэлт: өмнөх цэгээс секундэд 40 м-ээс хурдан шилжсэн мэт бол алгасна (дуураймал GPS-д хамаарахгүй)
       const jump = !f.sim && lp && moved !== Infinity && f.t > lp.t && moved / ((f.t - lp.t) / 1000) > 40;
       if (moved >= 10 && !still && !jump) {
@@ -1211,6 +1263,8 @@ async function runView(sid, tid) {
     guide.setLatLngs([]);
     if (run.status !== 'active') { alertBox('', ''); return; }
     if (fr.along >= L_M - 30 && !R.endNotified) { R.endNotified = true; beep(3, 990); banner('Төгсгөлд хүрлээ. "Дуусгах" дарна уу.', 'green', 8000); }
+    // Нарийвчлал муу (25 м-ээс их) цэгээр хазайлтын дохио өөрчлөхгүй
+    if (f.acc != null && f.acc > 25) return;
     const x = Math.abs(fr.cross);
     const dirTxt = fr.cross > 0 ? 'Зүүн' : 'Баруун';
     if (x >= settings.warn2) {
@@ -1428,7 +1482,7 @@ function openRecord({ survey, t, obs, sighting, onDone }) {
     const num = (id) => { const el = o.querySelector(id); if (!el) return undefined; const v = el.value.trim(); return v === '' ? null : +v; };
     const kt = num('#ktotal'); if (kt !== undefined) s.total = kt;
     const d = num('#fdist'); if (d !== undefined) s.dist = d;
-    const a = num('#fang'); if (a !== undefined) s.angle = a;
+    const a = num('#fang'); if (a !== undefined) s.angle = a == null ? a : Math.round(a);
     o.querySelectorAll('[data-f]').forEach((el) => { s[el.dataset.f] = el.value.trim() === '' ? null : +el.value; });
     const n = o.querySelector('#fnote'); if (n) s.note = n.value;
     const pn = o.querySelector('#fphnote'); if (pn) s.photoNote = pn.value;
@@ -1542,7 +1596,7 @@ function openRecord({ survey, t, obs, sighting, onDone }) {
       if (s.dist != null && s.angle != null) { const p = geo.destination(s.obsLat, s.obsLon, s.dist, s.angle); s.animLat = p[0]; s.animLon = p[1]; } else { s.animLat = null; s.animLon = null; }
       // GPS нэр (давхцвал -2, -3)
       const base = `${t.id}-${s.code || 'XX'}-${s.total}`;
-      if (!editing || !s.gpsName || !s.gpsName.startsWith(base)) {
+      if (!editing || !s.gpsName || !(s.gpsName === base || new RegExp('^' + base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '-\\d+$').test(s.gpsName))) {
         const others = (await db.byIndex('sightings', 'survey', survey.id)).filter((x) => x.id !== s.id).map((x) => x.gpsName);
         let name = base, n = 2;
         while (others.includes(name)) name = base + '-' + n++;
