@@ -255,3 +255,13 @@ textarea.inp { resize: vertical; }
 .logo:last-child { grid-column: 3; grid-row: 1; }
 .logo .wwf { width: auto; height: 46px; }
 .logo .brcc { width: auto; height: 34px; }
+.figbtn { display: block; width: 100%; padding: 0; border: 0; background: none; text-align: center; color: var(--muted); margin: 8px 0; }
+.figbtn .figure { margin: 0 0 4px; }
+.zoombar { position: absolute; right: 12px; top: calc(12px + var(--safe-t)); z-index: 2; display: flex; gap: 8px; }
+.zoomwrap { background: #fff; }
+.zoomwrap img.wide { width: 220%; max-width: none; }
+.zoomwrap img.fitw { width: 100%; max-width: none; }
+/* лого: ногоон толгой дотор зайтай цагаан хайрцаг */
+.hero { padding-top: calc(14px + var(--safe-t)); }
+.logos { margin: 0 14px; border-radius: 14px; padding: 12px 14px; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
+.brand { padding-top: 16px; }

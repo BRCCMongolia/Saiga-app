@@ -147,6 +147,22 @@ function syncStatusInto(id) {
 
 function page(title, html) {
   $app.innerHTML = topbar(title) + `<div class="pad prose">${html}</div>`;
+  $app.querySelectorAll('[data-zoom]').forEach((b) => b.addEventListener('click', () => zoomImage(b.dataset.zoom, b.dataset.rot)));
+}
+
+// Зургийг бүтэн дэлгэцээр томруулна. rot = 90° эргүүлсэн хувилбар (утсыг хэвтээ барихгүйгээр харах)
+function zoomImage(src, rot) {
+  const o = document.createElement('div');
+  o.className = 'overlay imgzoom';
+  let rotated = !!rot && innerHeight > innerWidth;
+  const draw = () => {
+    o.innerHTML = `<div class="zoombar">${rot ? `<button class="btn small" data-r="1">${rotated ? 'Босоо' : 'Хэвтээ'}</button>` : ''}<button class="btn small" data-c="1">Хаах</button></div>
+      <div class="zoomwrap"><img src="${rotated ? rot : src}" alt="" class="${rotated ? 'fitw' : 'wide'}"></div>`;
+    o.querySelector('[data-c]').onclick = () => o.remove();
+    const r = o.querySelector('[data-r]'); if (r) r.onclick = () => { rotated = !rotated; draw(); };
+  };
+  draw();
+  document.body.appendChild(o);
 }
 
 // ---------- тохиргоо ----------
@@ -495,13 +511,7 @@ async function surveyView(sid) {
     toast('Файл бэлдэж байна...');
     try { const z = await exp.zipAll(survey); await exp.shareFile(z.blob, z.name, survey.name); } catch (e) { console.error(e); toast('Алдаа: ' + e.message, 'err', 5000); }
   };
-  actions.zoomimg = () => {
-    const o = document.createElement('div');
-    o.className = 'overlay imgzoom';
-    o.innerHTML = '<button class="btn closebtn">Хаах</button><div class="zoomwrap"><img src="img/transect-map.jpg" alt="Трансектын зураг"></div>';
-    o.querySelector('.closebtn').onclick = () => o.remove();
-    document.body.appendChild(o);
-  };
+  actions.zoomimg = () => zoomImage('img/transect-map.jpg');
 }
 
 // ---------- товч тайлан ----------
