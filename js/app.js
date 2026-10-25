@@ -518,7 +518,9 @@ async function surveyView(sid) {
     ${topbar(survey.name, '#/', `<a class="iconbtn" href="#/new/${encodeURIComponent(sid)}" aria-label="Засах">${ICON.edit}</a>`)}
     <div class="subhead">${survey.startDate ? fmtDate(survey.startDate) + ' – ' + (survey.endDate ? fmtDate(survey.endDate) : '') : 'Эхлээгүй'} · Ахлагч: ${h(survey.leader || '-')} · Судлаач: ${h(survey.researchers.join(', ') || '-')} · Бүртгэгч: ${h(survey.recorder)}</div>
     <div class="scroll pad col">
-      <img src="img/transect-map.jpg" alt="Трансектын зураг" class="mapimg" data-act="zoomimg">
+      <div class="smapwrap"><div id="smap" class="smap"></div>
+        <div class="smaplegend"><span><i style="background:#2E7D4F"></i>Дууссан</span><span><i style="background:#E0A800"></i>Дутуу</span><span><i style="background:#9AA39D"></i>Эхлээгүй</span></div>
+        <button class="smapbtn" data-act="zoomimg">Замналын фото зураг харах</button></div>
       <div class="grid3">
         <div class="stat"><span>Дууссан замнал</span><b class="green">${doneN} / ${survey.transects.length}</b></div>
         <div class="stat"><span>Явсан</span><b>${drivenKm.toFixed(1)} км</b></div>
@@ -553,7 +555,38 @@ async function surveyView(sid) {
     toast('Файл бэлдэж байна...');
     try { const z = await exp.zipAll(survey); await exp.shareFile(z.blob, z.name, survey.name); } catch (e) { console.error(e); toast('Алдаа: ' + e.message, 'err', 5000); }
   };
-  actions.zoomimg = () => zoomImage('img/transect-map.jpg');
+  actions.zoomimg = () => zoomImage('img/transect-map.jpg', 'img/transect-map-rot.jpg');
+  // Трансектын жижиг зураг: зөвхөн шугам, төлөвөөр өнгөтэй (явсан замгүй, интернэтгүй ажиллана)
+  const smap = L.map('smap', { zoomControl: false, attributionControl: false, zoomSnap: 0.1 });
+  cleanup.push(() => smap.remove());
+  const colorOf = (st) => (st === 'done' ? '#2E7D4F' : st === 'new' ? '#9AA39D' : st === 'active' ? '#C2410C' : '#E0A800');
+  const bounds = [];
+  for (const t of survey.transects) {
+    const ll = [[t.a[1], t.a[0]], [t.b[1], t.b[0]]];
+    bounds.push(...ll);
+    const st = runs[t.id].status;
+    L.polyline(ll, { color: colorOf(st), weight: st === 'new' ? 3 : 5 }).addTo(smap);
+    // Нарийн шугамд дарахад амар болгох үл үзэгдэх өргөн шугам
+    const hit = L.polyline(ll, { color: '#000', opacity: 0, weight: 22 }).addTo(smap);
+    hit.bindTooltip(`${h(t.id)} · ${t.km} км · ${STATUS_MN[st]}`, { direction: 'top', sticky: true });
+    hit.on('click', () => hit.openTooltip());
+    // Баруун үзүүрт байнгын нэр (22C гэх мэт)
+    const w = t.a[0] <= t.b[0] ? ll[0] : ll[1];
+    L.marker(w, { interactive: false, icon: L.divIcon({ className: 'tlabel', html: `<span>${h(t.id)}</span>`, iconSize: null, iconAnchor: [0, 0] }) }).addTo(smap);
+  }
+  // Давхцсан нэрийг нууна
+  const declutter = () => {
+    const shown = [];
+    smap.getContainer().querySelectorAll('.tlabel span').forEach((el) => {
+      el.style.visibility = 'visible';
+      const r = el.getBoundingClientRect();
+      if (shown.some((q) => r.left < q.right && r.right > q.left && r.top < q.bottom && r.bottom > q.top)) el.style.visibility = 'hidden';
+      else shown.push(r);
+    });
+  };
+  smap.on('zoomend', () => setTimeout(declutter, 0));
+  if (bounds.length) smap.fitBounds(L.latLngBounds(bounds), { paddingTopLeft: [44, 14], paddingBottomRight: [10, 72] });
+  setTimeout(declutter, 0);
 }
 
 // ---------- товч тайлан ----------
@@ -581,7 +614,7 @@ function reportHtml(survey, sights, stats, open) {
     for (const x of list) (by[x.species] = by[x.species] || []).push(+x.total || 0);
     const op = reportGroups[key];
     const sp = Object.entries(by).map(([k, v]) => [k, v, v.reduce((a, b) => a + b, 0)]).sort((a, b) => b[2] - a[2] || a[0].localeCompare(b[0]));
-    return line(`${op ? '▾' : '▸'} ${label}`, list.map((x) => +x.total || 0), 'tot grp', `data-act="repgrp" data-g="${key}"`) + (op ? sp.map(([k, v]) => line(h(k), v, 'sub')).join('') : '');
+    return line(`${op ? '▾' : '▸'} ${label}`, list.map((x) => +x.total || 0), `tot grp grp-${key}`, `data-act="repgrp" data-g="${key}"`) + (op ? sp.map(([k, v]) => line(h(k), v, 'sub')).join('') : '');
   };
   const table = (list) => (list.length ? `<div class="rtable"><table><thead><tr><th>Зүйл</th><th>Сүрэг</th><th>Нийт</th><th>Дундаж</th><th>Мин</th><th>Макс</th></tr></thead><tbody>${line('Нийт', list.map((x) => +x.total || 0), 'tot')}${group(list.filter((x) => !isOther(x.species)), 'a', 'Амьтан')}${group(list.filter((x) => isOther(x.species)), 'o', 'Бусад')}</tbody></table></div>` : '<p class="muted small">Бүртгэл алга</p>');
   return `<div class="group">

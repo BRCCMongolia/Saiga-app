@@ -299,3 +299,11 @@ a.note { display: block; text-decoration: none; }
 .rtable tr.grp td { background: #F3EFE6; font-weight: 800; }
 .rtable tr.grp td:first-child { white-space: nowrap; }
 .rtable tr.sub td:first-child { padding-left: 22px; }
+.smapwrap { position: relative; border-radius: var(--r); overflow: hidden; border: 1px solid var(--line); flex-shrink: 0; }
+.smap { height: 300px; background: #F7F3EA; }
+.smaplegend { position: absolute; left: 8px; bottom: 8px; flex-direction: column; gap: 2px; z-index: 450; display: flex; gap: 8px; font-size: 11px; font-weight: 700; background: rgba(255,255,255,.85); padding: 3px 8px; border-radius: 8px; }
+.smaplegend i { display: inline-block; width: 12px; height: 4px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+.smapbtn { position: absolute; right: 8px; bottom: 8px; z-index: 450; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font-weight: 700; font-size: 13px; color: var(--ink); box-shadow: 0 1px 4px rgba(0,0,0,.15); }
+.rtable tr.grp-a td { background: #DCEBDF; color: #1E5A35; }
+.rtable tr.grp-o td { background: #F4F2EE; color: #5A5F5B; font-weight: 700; }
+.tlabel span { position: absolute; transform: translate(calc(-100% - 4px), -50%); font-size: 10px; font-weight: 800; color: #1F2A24; background: rgba(255,255,255,.8); padding: 0 3px; border-radius: 4px; white-space: nowrap; }
