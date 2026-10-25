@@ -158,14 +158,27 @@ function zoomImage(src, rot) {
   const o = document.createElement('div');
   o.className = 'overlay imgzoom';
   let rotated = !!rot && innerHeight > innerWidth;
+  let scale = 1;
   const draw = () => {
-    o.innerHTML = `<div class="zoombar">${rot ? `<button class="btn small" data-r="1">${rotated ? 'Босоо' : 'Хэвтээ'}</button>` : ''}<button class="btn small" data-c="1">Хаах</button></div>
-      <div class="zoomwrap"><img src="${rotated ? rot : src}" alt="" class="${rotated ? 'fitw' : 'wide'}"></div>`;
+    o.innerHTML = `<div class="zoombar"><button class="btn small" data-z="-1" aria-label="Жижигрүүлэх">−</button><button class="btn small" data-z="1" aria-label="Томруулах">+</button>${rot ? `<button class="btn small" data-r="1">${rotated ? 'Босоо' : 'Хэвтээ'}</button>` : ''}<button class="btn small" data-c="1">Хаах</button></div>
+      <div class="zoomwrap"><img src="${rotated ? rot : src}" alt=""></div>`;
+    const wrap = o.querySelector('.zoomwrap'), img = o.querySelector('img');
+    // Дэлгэцийг бүтэн дүүргэнэ (cover), +/− -ээр томруулж, хуруугаар чирж харна
+    const fit = (keepCenter) => {
+      if (!img.naturalWidth) return;
+      const cx = (wrap.scrollLeft + wrap.clientWidth / 2) / (img.offsetWidth || 1), cy = (wrap.scrollTop + wrap.clientHeight / 2) / (img.offsetHeight || 1);
+      const base = Math.max(wrap.clientWidth / img.naturalWidth, wrap.clientHeight / img.naturalHeight);
+      img.style.width = Math.round(img.naturalWidth * base * scale) + 'px';
+      if (keepCenter) { wrap.scrollLeft = cx * img.offsetWidth - wrap.clientWidth / 2; wrap.scrollTop = cy * img.offsetHeight - wrap.clientHeight / 2; }
+    };
+    img.onload = () => fit(false);
+    if (img.complete) fit(false);
+    o.querySelectorAll('[data-z]').forEach((b) => b.onclick = () => { scale = Math.max(1, Math.min(4, scale * (b.dataset.z === '1' ? 1.5 : 1 / 1.5))); fit(true); });
     o.querySelector('[data-c]').onclick = () => o.remove();
-    const r = o.querySelector('[data-r]'); if (r) r.onclick = () => { rotated = !rotated; draw(); };
+    const r = o.querySelector('[data-r]'); if (r) r.onclick = () => { rotated = !rotated; scale = 1; draw(); };
   };
-  draw();
   document.body.appendChild(o);
+  draw();
 }
 
 // ---------- тохиргоо ----------
@@ -585,6 +598,29 @@ async function surveyView(sid) {
     });
   };
   smap.on('zoomend', () => setTimeout(declutter, 0));
+  // Одоогийн байрлал (зөвхөн харуулна, зам бичихгүй). Газрын зургаас гадуур бол захад чиглэл, зайг харуулна.
+  const me = L.marker([0, 0], { interactive: false, icon: arrowIcon(0) });
+  const edge = document.createElement('div');
+  edge.className = 'smapedge'; edge.hidden = true;
+  smap.getContainer().appendChild(edge);
+  const placeMe = () => {
+    const f = gps.lastFix();
+    if (!f || f.error) return;
+    const ll = L.latLng(f.lat, f.lon);
+    if (!smap.hasLayer(me)) me.addTo(smap);
+    me.setLatLng(ll); me.setIcon(arrowIcon(f.heading || 0));
+    const size = smap.getSize(), p = smap.latLngToContainerPoint(ll);
+    if (p.x >= 0 && p.y >= 0 && p.x <= size.x && p.y <= size.y) { edge.hidden = true; return; }
+    const c = smap.getCenter(), cp = L.point(size.x / 2, size.y / 2), d = p.subtract(cp);
+    const k = Math.min((size.x / 2 - 46) / Math.abs(d.x || 1e-9), (size.y / 2 - 18) / Math.abs(d.y || 1e-9));
+    const q = cp.add(d.multiplyBy(k));
+    const brg = geo.bearing(c.lat, c.lng, f.lat, f.lon);
+    edge.innerHTML = `<span style="display:inline-block;transform:rotate(${brg}deg)">↑</span> ${fmtKm(geo.distance(c.lat, c.lng, f.lat, f.lon))}`;
+    edge.style.left = q.x + 'px'; edge.style.top = q.y + 'px'; edge.hidden = false;
+  };
+  cleanup.push(gps.onFix(placeMe));
+  smap.on('moveend zoomend', placeMe);
+  if (!settings.sim) { gps.start(); cleanup.push(() => gps.stop()); }
   if (bounds.length) smap.fitBounds(L.latLngBounds(bounds), { paddingTopLeft: [44, 14], paddingBottomRight: [10, 72] });
   setTimeout(declutter, 0);
 }

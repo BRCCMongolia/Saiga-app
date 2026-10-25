@@ -224,7 +224,7 @@ textarea.inp { resize: vertical; }
 /* зураг томруулах */
 .imgzoom { background: #111; }
 .zoomwrap { position: absolute; inset: 0; overflow: auto; touch-action: pan-x pan-y pinch-zoom; }
-.zoomwrap img { width: 200%; max-width: none; display: block; }
+.zoomwrap img { max-width: none; display: block; }
 .closebtn { position: absolute; right: 12px; top: calc(12px + var(--safe-t)); z-index: 2; }
 
 /* текст хуудас */
@@ -261,10 +261,8 @@ textarea.inp { resize: vertical; }
 .logo .brcc { width: auto; height: 34px; }
 .figbtn { display: block; width: 100%; padding: 0; border: 0; background: none; text-align: center; color: var(--muted); margin: 8px 0; }
 .figbtn .figure { margin: 0 0 4px; }
-.zoombar { position: absolute; right: 12px; top: calc(12px + var(--safe-t)); z-index: 2; display: flex; gap: 8px; }
+.zoombar { position: absolute; right: 12px; flex-wrap: wrap; justify-content: flex-end; top: calc(12px + var(--safe-t)); z-index: 2; display: flex; gap: 8px; }
 .zoomwrap { background: #fff; }
-.zoomwrap img.wide { width: 220%; max-width: none; }
-.zoomwrap img.fitw { width: 100%; max-width: none; }
 /* лого: ногоон толгой дотор зайтай цагаан хайрцаг */
 .hero { padding-top: calc(14px + var(--safe-t)); }
 .logos { margin: 0 14px; border-radius: 14px; padding: 12px 14px; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
@@ -307,3 +305,6 @@ a.note { display: block; text-decoration: none; }
 .rtable tr.grp-a td { background: #DCEBDF; color: #1E5A35; }
 .rtable tr.grp-o td { background: #F4F2EE; color: #5A5F5B; font-weight: 700; }
 .tlabel span { position: absolute; transform: translate(calc(-100% - 4px), -50%); font-size: 10px; font-weight: 800; color: #1F2A24; background: rgba(255,255,255,.8); padding: 0 3px; border-radius: 4px; white-space: nowrap; }
+.smap { background: #E6F0E4 !important; }
+.smapedge { position: absolute; z-index: 460; transform: translate(-50%, -50%); background: #1D4ED8; color: #fff; font-size: 12px; font-weight: 800; padding: 3px 8px; border-radius: 999px; white-space: nowrap; box-shadow: 0 1px 4px rgba(0,0,0,.25); pointer-events: none; }
+.zoombar .btn[data-z] { min-width: 44px; font-size: 20px; }
