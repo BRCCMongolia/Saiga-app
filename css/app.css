@@ -308,3 +308,4 @@ a.note { display: block; text-decoration: none; }
 .smap { background: #E6F0E4 !important; }
 .smapedge { position: absolute; z-index: 460; transform: translate(-50%, -50%); background: #1D4ED8; color: #fff; font-size: 12px; font-weight: 800; padding: 3px 8px; border-radius: 999px; white-space: nowrap; box-shadow: 0 1px 4px rgba(0,0,0,.25); pointer-events: none; }
 .zoombar .btn[data-z] { min-width: 44px; font-size: 20px; }
+.simcard #simhead { user-select: none; -webkit-user-select: none; cursor: pointer; }

@@ -98,7 +98,7 @@ async function homeView() {
       <div class="brand"><img src="img/icon-192.png" alt="" class="appicon"><div><h1>Saiga survey</h1><p>Бөхөн тооллого · шугаман трансект</p></div></div>
     </div>
     <div class="pad col">
-      ${settings.sim ? '<a class="note" href="#/settings"><b>Туршилтын горим асаалттай</b> (дуураймал GPS). Жинхэнэ судалгааны өмнө Тохиргооноос унтраана уу.</a>' : ''}
+      ${settings.sim ? '<a class="note" href="#/settings"><b>Дуураймал горим асаалттай</b> (дуураймал GPS). Жинхэнэ судалгааны өмнө Тохиргооноос унтраана уу.</a>' : ''}
       ${active ? `<a class="banner yellow" href="#/run/${encodeURIComponent(active.surveyId)}/${encodeURIComponent(active.tid)}"><b>${h(active.tid)} ${active.status === 'active' ? 'замнал явж байна' : 'түр зогссон'}</b><span>Үргэлжлүүлэх ›</span></a>` : ''}
       <div class="grid2">
         <a class="card tile" href="#/guide">${ICON.book}<b>Удирдамж</b><span class="muted small">Зорилго, шаардлага</span></a>
@@ -207,15 +207,8 @@ async function settingsView() {
       <span class="muted small" id="tilest"></span>
     </div>
     <div class="card col">
-      <b>Туршилтын горим</b>
-      <label class="row gap"><input type="checkbox" id="sim" ${settings.sim ? 'checked' : ''}> Дуураймал GPS (ширээн дээрээс турших)</label>
-      <label class="lbl" for="simf">Хурдасгах (1 = жинхэнэ хурд)</label>
-      <input id="simf" class="inp" inputmode="numeric" value="${settings.simFactor}">
-      <button class="btn" data-act="savesim">Хадгалах</button>
-      <span class="muted small">Анхаар: хээрт гарахаас өмнө заавал унтраана.</span>
-      <hr>
       <b>Бодит GPS-ээр турших</b>
-      <span class="muted small">Одоо байгаа газраасаа 2 км туршилтын замнал үүсгэнэ. Дуураймал GPS-г унтрааж, машинаар явж туршина. Туршилтын судалгаа Google Sheet руу илгээгдэхгүй.</span>
+      <span class="muted small">Одоо байгаа газраасаа 2 км туршилтын замнал үүсгэнэ. Машинаар явж туршина. Туршилтын судалгаа Google Sheet руу илгээгдэхгүй.</span>
       <button class="btn" data-act="testline">Энд туршилтын замнал үүсгэх</button>
     </div>
     <div class="card col">
@@ -223,8 +216,24 @@ async function settingsView() {
       <span class="muted small">Утас солих, нөөцлөхөд бүх өгөгдлийг нэг файлаар.</span>
       <div class="row gap"><button class="btn" data-act="backup">Нөөц татах</button><label class="btn">Нөөцөөс сэргээх<input type="file" id="restore" accept=".json,application/json" hidden></label></div>
     </div>
+    <div class="card col simcard" id="simcard">
+      <b id="simhead">Дуураймал горим <span class="muted small">(2 товшиж нээнэ)</span></b>
+      <div class="col gap4" id="simbody" ${settings.sim ? '' : 'hidden'}>
+        <label class="row gap"><input type="checkbox" id="sim" ${settings.sim ? 'checked' : ''}> Дуураймал GPS (ширээн дээрээс заах, турших)</label>
+        <label class="lbl" for="simf">Хурдасгах (1 = жинхэнэ хурд)</label>
+        <input id="simf" class="inp" inputmode="numeric" value="${settings.simFactor}">
+        <button class="btn" data-act="savesim">Хадгалах</button>
+        <span class="muted small">Анхаар: хээрт гарахаас өмнө заавал унтраана.</span>
+      </div>
+    </div>
     <p class="muted small">Хувилбар ${h(window.APP_VERSION || '')}</p>
   </div>`;
+  // Дуураймал горим: 2 товшвол нээгдэж/хаагдана
+  let lastTap = 0;
+  document.getElementById('simhead').addEventListener('click', () => {
+    const now = Date.now();
+    if (now - lastTap < 450) { const b = document.getElementById('simbody'); b.hidden = !b.hidden; lastTap = 0; } else lastTap = now;
+  });
   syncStatusInto('syncst');
   actions.saveurl = async () => { await db.setMeta('sheetUrl', document.getElementById('surl').value.trim()); toast('Хадгаллаа'); sync.syncAll(); };
   actions.testurl = async () => {
