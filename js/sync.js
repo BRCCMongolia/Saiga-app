@@ -53,7 +53,7 @@ export async function syncAll() {
             i++;
             const ph = await db.get('photos', pid);
             if (!ph || ph.link) { if (ph && ph.link && !s.photoLinks.includes(ph.link)) s.photoLinks.push(ph.link); continue; }
-            const j = await post(url, { action: 'photo', folder: survey.name, name: s.gpsName + '_' + i + '_' + pid.slice(-5) + '.jpg', mime: 'image/jpeg', caption: ph.caption || '', data: await blobToBase64(ph.blob) });
+            const j = await post(url, { action: 'photo', folder: survey.name, name: s.gpsName + '_' + i + '_' + pid.slice(-5) + '.jpg', mime: 'image/jpeg', caption: [s.photoNote, ph.caption].filter(Boolean).join(' / '), data: await blobToBase64(ph.blob) });
             const curPh = await db.get('photos', pid);
             if (curPh) { curPh.link = j.url; await db.put('photos', curPh); }
             s.photoLinks.push(j.url);

@@ -829,8 +829,14 @@ async function runView(sid, tid) {
     if (stEl && run.status === 'active') stEl.textContent = 'Судалгаа явж байна' + (kmh != null ? ' · ' + Math.round(kmh) + ' км/ц' : '');
     // Хурд
     if (run.status === 'active' && kmh != null) {
-      R.fast = kmh > 42 ? R.fast + 1 : 0;
-      if (R.fast === 4) { toast(`Хурд ${Math.round(kmh)} км/ц. Удирдамжаар 30-40 км/ц-аар явна.`, 'warn', 4000); beep(1, 520); }
+      // 40 км/ц-аас хэтэрвэл 3 дараалсан цэгийн дараа сануулж, хэтэрсэн хэвээр бол 30 секунд тутам давтана
+      R.fast = kmh > 40 ? R.fast + 1 : 0;
+      if (R.fast >= 3 && Date.now() - (R.lastFastWarn || 0) > 30000) {
+        R.lastFastWarn = Date.now();
+        banner(`Хурд ${Math.round(kmh)} км/ц. 40 км/ц-аас бүү хэтрүүл (30-40 км/ц).`, 'red', 5000);
+        beep(2, 520);
+      }
+      if (R.fast === 0) R.lastFastWarn = 0;
     }
     // Чиглүүлэг
     if (run.status === 'new') {
@@ -943,7 +949,8 @@ function openRecord({ survey, t, obs, sighting, onDone }) {
   let existingPhotos = [];
   let open = null; // аль тоо сонгогч нээлттэй
   let warnedMissing = false;
-  let vegOpen = [s.snow, s.forbH, s.forbC, s.grassH, s.grassC, s.shrubH, s.shrubC].some((x) => x != null);
+  let vegOpen = true;
+  let warnedVeg = false;
   const quick = () => QUICK_SPECIES.find((q) => q.mn === s.species) || null;
   const isQuick = (q) => (q.other ? (s.species && !QUICK_SPECIES.some((x) => x.mn === s.species) && !/ сэг$/.test(s.species)) : q.carcass ? / сэг$/.test(s.species) : s.species === q.mn);
   const needSex = () => { const q = quick(); return q && q.sex; };
@@ -993,7 +1000,7 @@ function openRecord({ survey, t, obs, sighting, onDone }) {
         </div>
         <button class="btn blue" data-act2="pick">${ICON.pin} Газрын зургаас оруулах</button>
         <details class="card veg" ${vegOpen ? 'open' : ''}>
-          <summary><b>Цас, ургамал</b> <span class="muted small">(заавал биш)</span></summary>
+          <summary><b>Цас, ургамал</b> <span class="muted small">(бөглөнө, байхгүй бол 0)</span></summary>
           <div class="row between"><span></span><button class="btn small" data-act2="same">Өмнөхтэй адил</button></div>
           <div class="veggrid">
             <span>Цас, мм</span><input class="inp" type="number" inputmode="decimal" data-f="snow" aria-label="Цас, мм" value="${s.snow ?? ''}"><span></span>
@@ -1005,7 +1012,9 @@ function openRecord({ survey, t, obs, sighting, onDone }) {
         </details>
         <div class="col gap4"><label class="lbl" for="fnote">Тэмдэглэл</label><textarea id="fnote" class="inp" rows="2" placeholder="ШИНЭ, үхсэн шалтгаан гэх мэт">${h(s.note)}</textarea></div>
         <span class="lbl">Зураг</span>
-        <div class="photos">${[...existingPhotos, ...newPhotos].map((p) => `<div class="ph"><img src="${p.url}" alt=""><input class="inp small" data-cap="${p.id}" placeholder="Зургийн тайлбар" value="${h(p.caption || '')}"><button class="link small danger" data-rmph="${p.id}">Хасах</button></div>`).join('')}</div>
+        <textarea id="fphnote" class="inp" rows="2" placeholder="Зургийн тайлбар: юуны зураг, нөхцөл байдал">${h(s.photoNote || '')}</textarea>
+        <span class="muted small">Зураг тус бүрийн доор нэмэлт тайлбар бичиж болно.</span>
+        <div class="photos">${[...existingPhotos, ...newPhotos].map((p) => `<div class="ph"><img src="${p.url}" alt=""><input class="inp small" data-cap="${p.id}" placeholder="Зургийн тайлбар бичих" value="${h(p.caption || '')}"><button class="link small danger" data-rmph="${p.id}">Хасах</button></div>`).join('')}</div>
         <div class="row gap"><label class="btn grow">Камер<input type="file" accept="image/*" capture="environment" id="pcam" hidden></label><label class="btn grow">Галерей<input type="file" accept="image/*" id="pgal" multiple hidden></label></div>
         ${editing ? '<button class="btn danger" data-act2="delete">Бүртгэл устгах</button>' : ''}
       </div>
@@ -1022,6 +1031,7 @@ function openRecord({ survey, t, obs, sighting, onDone }) {
     const a = num('#fang'); if (a !== undefined) s.angle = a;
     o.querySelectorAll('[data-f]').forEach((el) => { s[el.dataset.f] = el.value.trim() === '' ? null : +el.value; });
     const n = o.querySelector('#fnote'); if (n) s.note = n.value;
+    const pn = o.querySelector('#fphnote'); if (pn) s.photoNote = pn.value;
     o.querySelectorAll('[data-cap]').forEach((el) => {
       const p = [...existingPhotos, ...newPhotos].find((x) => x.id === el.dataset.cap);
       if (p) p.caption = el.value;
@@ -1109,7 +1119,7 @@ function openRecord({ survey, t, obs, sighting, onDone }) {
     },
     save: async () => {
       readInputs();
-      const err = (m) => { toast(m, 'warn', 3500); return false; };
+      const err = (m, ms = 3500) => { toast(m, 'warn', ms); return false; };
       if (!s.species) return err('Зүйл сонгоно уу');
       if (s.total == null || !(s.total >= 1)) return err('Бодгалийн тоо оруулна уу');
       const sum = ['male', 'female', 'young', 'unknown'].reduce((a, k) => a + (+s[k] || 0), 0);
@@ -1117,6 +1127,12 @@ function openRecord({ survey, t, obs, sighting, onDone }) {
       if (needSex() && !hasParts) return err('Бөхөн, хар сүүлтэд эр, эм, төл, тодорхойгүйг бөглөнө үү');
       if (hasParts && sum !== s.total) return err(`Нийлбэр ${sum}. Нийт ${s.total} байх ёстой.`);
       if (s.angle != null && (s.angle < 0 || s.angle > 360)) return err('Өнцөг 0-360 байна');
+      const VEG = ['snow', 'forbH', 'forbC', 'grassH', 'grassC', 'shrubH', 'shrubC'];
+      if (VEG.some((k) => s[k] == null || isNaN(s[k])) && !warnedVeg) {
+        warnedVeg = true; vegOpen = true; render();
+        return err('Цас, ургамлын өндөр, бүрхэц дутуу байна. Бөглөх эсвэл "Өмнөхтэй адил" дарна уу. Бичихгүй хадгалах бол дахин "Хадгалах" дарна.', 5000);
+      }
+      if (VEG.some((k) => s[k] < 0) || ['forbC', 'grassC', 'shrubC'].some((k) => s[k] > 100)) return err('Цас, ургамлын утга буруу байна (бүрхэц 0-100%)');
       if (s.dist != null && s.dist < 0) return err('Зай буруу байна');
       if ((s.dist == null || s.angle == null) && !keypadOnly() && !warnedMissing) {
         warnedMissing = true;

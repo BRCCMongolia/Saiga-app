@@ -100,7 +100,8 @@ async function addPhotos(z, data, tid, folder) {
       if (!ph) continue;
       i++;
       z.file(folder + s.gpsName + '_' + i + '.jpg', ph.blob);
-      if (ph.caption) z.file(folder + s.gpsName + '_' + i + '.txt', ph.caption);
+      const cap = [s.photoNote, ph.caption].filter(Boolean).join('\n');
+      if (cap) z.file(folder + s.gpsName + '_' + i + '.txt', cap);
     }
   }
 }
