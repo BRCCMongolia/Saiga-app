@@ -279,3 +279,15 @@ textarea.inp { resize: vertical; }
 a.note { display: block; text-decoration: none; }
 .rbottom .btn.small.danger { min-height: 40px; }
 .card hr { border: 0; border-top: 1px solid var(--line); margin: 6px 0; width: 100%; }
+.angrow { display: flex; gap: 6px; }
+.angrow .inp { flex: 1; min-width: 0; }
+.compbtn { flex: 0 0 52px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--line); background: #fff; border-radius: 12px; color: var(--ink); }
+.compass { position: relative; width: 180px; height: 180px; margin: 10px auto 4px; }
+.cdial { position: absolute; inset: 0; width: 100%; height: 100%; transition: transform .15s linear; }
+.cneedle { position: absolute; left: 50%; top: -6px; width: 0; height: 0; margin-left: -10px; border: 10px solid transparent; border-top: 16px solid #C2410C; }
+.cval { text-align: center; font-size: 36px; font-weight: 800; }
+.center { text-align: center; }
+.rscale { position: absolute; left: 14px; z-index: 450; pointer-events: none; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.rscale i { display: block; height: 6px; border: 2px solid #1F2A24; border-top: 0; background: rgba(255,255,255,.6); }
+.rscale span { font-size: 12px; font-weight: 700; color: #1F2A24; background: rgba(255,255,255,.75); padding: 0 4px; border-radius: 4px; }
+.leaflet-control-scale-line { font-size: 12px; font-weight: 700; background: rgba(255,255,255,.75); border-color: #1F2A24; color: #1F2A24; }

@@ -21,13 +21,15 @@ let actions = {};
 let cleanup = [];
 let DEFAULT_TRANSECTS = [];
 let SPECIES = [];
-let settings = { warn1: 300, warn2: 500, sim: false, simFactor: 5, layer: 'topo' };
+let settings = { warn1: 200, warn2: 300, sim: false, simFactor: 5, layer: 'topo' };
 
 // ---------- эхлүүлэх ----------
 async function init() {
   DEFAULT_TRANSECTS = await (await fetch('data/transects-2026.json')).json();
   fetch('data/species.json').then((r) => r.json()).then((s) => { SPECIES = s; }).catch(() => {});
   Object.assign(settings, await db.getMeta('settings', {}));
+  // Хуучин 300/500 м-ийн анхны тохиргоог 200/300 м болгоно (нэг удаа)
+  if (!settings.dev3) { if (settings.warn1 === 300 && settings.warn2 === 500) { settings.warn1 = 200; settings.warn2 = 300; } settings.dev3 = true; db.setMeta('settings', settings); }
   db.persist();
   $app.addEventListener('click', (e) => {
     unlockAudio();
@@ -640,6 +642,9 @@ async function detailView(sid, tid) {
   const map = L.map('dmap', { zoomControl: false, attributionControl: false });
   cleanup.push(() => map.remove());
   baseLayer(map);
+  const sc = L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(map);
+  const mnScale = () => sc.getContainer().querySelectorAll('div').forEach((d) => { d.textContent = d.textContent.replace('km', 'км').replace(/ m$/, ' м'); });
+  map.on('zoomend moveend', () => setTimeout(mnScale, 0));
   const [A, B] = [[t.a[1], t.a[0]], [t.b[1], t.b[0]]];
   L.polyline([A, B], { color: '#2F4A3A', weight: 3, dashArray: '8 6' }).addTo(map);
   for (const s of segments(points)) {
@@ -753,6 +758,7 @@ async function runView(sid, tid) {
     </div>
     <a class="rback iconbtn light" href="#/s/${encodeURIComponent(sid)}" aria-label="Буцах" data-act="leave">${ICON.back}</a>
     <div class="rbottom" id="rbottom"></div>
+    <div class="rscale" id="rscale"><i></i><span></span></div>
   </div>`;
 
   // Газрын зураг
@@ -760,6 +766,17 @@ async function runView(sid, tid) {
   cleanup.push(() => map.remove());
   let tiles = baseLayer(map);
   const ends = () => runEnds(run, t);
+  // Масштаб (зүүн доод буланд, томруулах/жижигрүүлэхэд өөрчлөгдөнө). Эргүүлсэн үед ч зөв харагдахаар газрын зургийн гадна.
+  const drawScale = () => {
+    const el = document.getElementById('rscale'), rb = document.getElementById('rbottom');
+    if (!el || !map._loaded) return;
+    const mpp = 156543.03392 * Math.cos(map.getCenter().lat * Math.PI / 180) / 2 ** map.getZoom();
+    const maxM = mpp * 110, p = 10 ** Math.floor(Math.log10(maxM)), m = [5, 2, 1].map((k) => k * p).find((v) => v <= maxM);
+    el.querySelector('i').style.width = Math.round(m / mpp) + 'px';
+    el.querySelector('span').textContent = m >= 1000 ? m / 1000 + ' км' : m + ' м';
+    if (rb) el.style.bottom = rb.offsetHeight + 4 + 'px';
+  };
+  map.on('zoomend moveend', drawScale);
   survey.transects.forEach((x) => {
     if (x.id !== tid) L.polyline([[x.a[1], x.a[0]], [x.b[1], x.b[0]]], { color: '#6B7A70', weight: 2, dashArray: '4 6', opacity: 0.8 }).bindTooltip(x.id + ' · ' + x.km + ' км').addTo(map);
   });
@@ -876,6 +893,7 @@ async function runView(sid, tid) {
     else if (run.status === 'active') el.innerHTML = `${rec}<div class="row gap"><button class="btn grow" data-act="pause">Түр зогсоох</button><button class="btn grow dark" data-act="finish">Дуусгах</button></div>`;
     else if (run.status === 'paused' || run.status === 'returning' || run.status === 'incomplete') el.innerHTML = `${rec}<div class="row gap"><button class="btn grow yellowbtn" data-act="resume">Эхлэх (үргэлжлүүлэх)</button><button class="btn grow dark" data-act="finish">Дуусгах</button></div>${delBtn}`;
     else el.innerHTML = `<div class="banner green">Энэ трансект дууссан</div><div class="row gap"><a class="btn grow" href="#/t/${encodeURIComponent(sid)}/${encodeURIComponent(tid)}">Дэлгэрэнгүй</a><button class="btn grow" data-act="reopen">Дахин нээх</button></div>${delBtn}`;
+    drawScale();
     const stEl = document.getElementById('rstate');
     if (stEl) stEl.textContent = { new: 'Эхлээгүй', active: 'Судалгаа явж байна', paused: 'Түр зогссон', returning: 'Түр зогссон · шугам руу', done: 'Дууссан', incomplete: 'Дутуу' }[run.status];
   };
@@ -1154,6 +1172,58 @@ function arrowIcon(deg) {
   return L.divIcon({ className: 'arrowicon', iconSize: [36, 36], iconAnchor: [18, 18], html: `<svg width="36" height="36" viewBox="0 0 36 36" style="transform:rotate(${deg}deg)"><path d="M18 3 L30 32 L18 25 L6 32 Z" fill="#1D4ED8" stroke="#fff" stroke-width="2.5" stroke-linejoin="round"/></svg>` });
 }
 
+function dialSvg() {
+  let g = '<circle r="95" fill="#fff" stroke="#2F4A3A" stroke-width="4"/>';
+  for (let d = 0; d < 360; d += 10) {
+    const a = d * Math.PI / 180, r1 = d % 90 === 0 ? 74 : d % 30 === 0 ? 80 : 86;
+    g += `<line x1="${(Math.sin(a) * r1).toFixed(1)}" y1="${(-Math.cos(a) * r1).toFixed(1)}" x2="${(Math.sin(a) * 93).toFixed(1)}" y2="${(-Math.cos(a) * 93).toFixed(1)}" stroke="#2F4A3A" stroke-width="${d % 30 === 0 ? 3 : 1.5}"/>`;
+  }
+  [['Х', 0, '#C2410C'], ['З', 90, '#2F4A3A'], ['У', 180, '#2F4A3A'], ['Б', 270, '#2F4A3A']].forEach(([l, d, c]) => {
+    const a = d * Math.PI / 180;
+    g += `<text x="${(Math.sin(a) * 58).toFixed(1)}" y="${(-Math.cos(a) * 58 + 8).toFixed(1)}" text-anchor="middle" font-size="24" font-weight="800" fill="${c}" transform="rotate(${d} ${(Math.sin(a) * 58).toFixed(1)} ${(-Math.cos(a) * 58).toFixed(1)})">${l}</text>`;
+  });
+  return g;
+}
+
+// Утасны луужин: утасны дээд талыг амьтан руу чиглүүлж өнцөг авна.
+async function compassDialog() {
+  const D = window.DeviceOrientationEvent;
+  if (!D) { toast('Энэ утсанд луужин алга', 'warn'); return null; }
+  if (typeof D.requestPermission === 'function') {
+    // iPhone зөвшөөрөл асууна. Хариу ирэхгүй/татгалзсан ч цааш үргэлжилж, уншиж чадахгүй бол цонхонд хэлнэ.
+    try { await Promise.race([D.requestPermission(), new Promise((r) => setTimeout(r, 3000))]); } catch (e) { /* ignore */ }
+  }
+  let heading = null, stop = () => {};
+  const res = await modal({
+    title: 'Утасны луужин',
+    body: `<p class="small">Утсаа хэвтээ барьж, дээд талыг нь амьтан руу чиглүүлнэ. Машины төмөр луужинг хазайлгадаг тул боломжтой бол машинаас гарч, эсвэл цонхоор чиглүүлнэ.</p>
+      <div class="compass"><svg class="cdial" id="cdial" viewBox="-100 -100 200 200">${dialSvg()}</svg><div class="cneedle"></div></div>
+      <div class="cval" id="cval">–</div><p class="muted small center" id="cnote">Луужин уншиж байна...</p>`,
+    buttons: [{ label: 'Болих', value: null }, { label: 'Энэ утгыг авах', cls: 'primary', value: () => heading, validate: () => { if (heading == null) { toast('Луужин уншиж чадаагүй байна', 'warn'); return false; } return true; } }],
+    onMount: (w) => {
+      const dial = w.querySelector('#cdial'), val = w.querySelector('#cval'), note = w.querySelector('#cnote');
+      const on = (e) => {
+        let h = null;
+        if (e.webkitCompassHeading != null) h = e.webkitCompassHeading;
+        else if (e.absolute && e.alpha != null) h = 360 - e.alpha;
+        if (h == null) return;
+        const so = (screen.orientation && screen.orientation.angle) || 0;
+        h = Math.round((h + so + 360) % 360);
+        heading = h === 360 ? 0 : h;
+        val.textContent = heading + '°';
+        dial.style.transform = `rotate(${-heading}deg)`;
+        note.textContent = e.webkitCompassAccuracy > 25 ? 'Луужин нарийвчлал муу: утсаа 8 дүрсээр эргүүлж тохируулна уу' : 'Утга тогтвортой болмогц "Энэ утгыг авах" дарна';
+      };
+      const evName = 'ondeviceorientationabsolute' in window ? 'deviceorientationabsolute' : 'deviceorientation';
+      addEventListener(evName, on);
+      stop = () => removeEventListener(evName, on);
+      setTimeout(() => { if (heading == null) note.textContent = 'Луужин уншиж чадсангүй (зөвшөөрөл өгөөгүй эсвэл луужингүй утас). Гараар бичнэ үү.'; }, 4000);
+    },
+  });
+  stop();
+  return res == null ? null : res;
+}
+
 function banner(text, kind = 'green', ms = 3000) {
   const el = document.createElement('div');
   el.className = 'rbanner ' + kind;
@@ -1233,7 +1303,7 @@ function openRecord({ survey, t, obs, sighting, onDone }) {
         </div>`}
         <div class="grid2">
           <div class="col gap4"><label class="lbl" for="fdist">Зай, м</label><input id="fdist" class="inp big" type="number" inputmode="numeric" min="0" value="${s.dist ?? ''}"></div>
-          <div class="col gap4"><label class="lbl" for="fang">Өнцөг, 0–360°</label><input id="fang" class="inp big" type="number" inputmode="numeric" min="0" max="360" value="${s.angle ?? ''}"></div>
+          <div class="col gap4"><label class="lbl" for="fang">Өнцөг, 0–360°</label><div class="angrow"><input id="fang" class="inp big" type="number" inputmode="numeric" min="0" max="360" value="${s.angle ?? ''}"><button class="compbtn" data-act2="compass" aria-label="Утасны луужин">${ICON.compass}</button></div></div>
         </div>
         <button class="btn blue" data-act2="pick">${ICON.pin} Газрын зургаас оруулах</button>
         <details class="card veg" ${vegOpen ? 'open' : ''}>
@@ -1328,11 +1398,16 @@ function openRecord({ survey, t, obs, sighting, onDone }) {
     const veg = o.querySelector('.veg');
     if (veg) veg.addEventListener('toggle', () => { vegOpen = veg.open; });
     const ang = o.querySelector('#fang');
-    if (ang) ang.oninput = () => { if (+ang.value > 360) ang.value = 360; };
+    if (ang) ang.oninput = () => { if (+ang.value > 360 || +ang.value < 0) { toast('Өнцөг 0–360 хүртэлх утга авна', 'warn', 3500); ang.value = ''; } };
   };
 
   const act2 = {
     cancel: () => { close(); },
+    compass: async () => {
+      readInputs();
+      const v = await compassDialog();
+      if (v != null) { s.angle = v; render(); }
+    },
     pick: async () => {
       readInputs();
       const r = await mapPick(s.obsLat, s.obsLon, survey, t);
