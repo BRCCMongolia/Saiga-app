@@ -471,7 +471,9 @@ async function surveyView(sid) {
     else if (r.status === 'done') act = '<span class="pill green">Дууссан</span>';
     else if (r.status === 'active') act = `<a class="mini orange" href="#/run/${encodeURIComponent(sid)}/${encodeURIComponent(t.id)}">Нээх</a>`;
     else act = `<a class="mini yellow" href="#/run/${encodeURIComponent(sid)}/${encodeURIComponent(t.id)}">Үргэлжлүүлэх</a>`;
-    const extra = r.status === 'incomplete' ? `<span class="tiny warn">дутуу ${st.remainingKm.toFixed(1)}</span>` : '';
+    // Төлөвлөсөнтэй харьцуулсан илүү/дутуу (явсан судалгааны зам - төлөвлөсөн урт)
+    const diff = st.effortKm - t.km;
+    const extra = r.status === 'new' ? '' : `<span class="tiny diff ${diff >= 0 ? 'green' : 'warn'}">${diff >= 0 ? 'илүү' : 'дутуу'} ${Math.abs(diff).toFixed(1)}</span>`;
     return `<div class="trow ${r.status === 'incomplete' || r.status === 'paused' || r.status === 'returning' ? 'yel' : ''}">
       <a href="#/t/${encodeURIComponent(sid)}/${encodeURIComponent(t.id)}" class="tid">${h(t.id)}</a>
       <span>${t.km.toFixed(1)}</span><span class="b">${r.status === 'new' ? '–' : st.effortKm.toFixed(1)} ${extra}</span>${act}</div>`;
@@ -486,14 +488,14 @@ async function surveyView(sid) {
         <div class="stat"><span>Явсан</span><b>${drivenKm.toFixed(1)} км</b></div>
         <div class="stat"><span>Үлдсэн</span><b class="orange">${remainKm.toFixed(1)} км</b></div>
       </div>
-      <div id="report">${reportHtml(survey, sightsAll, stats, !!closed.__repOpen)}</div>
       ${keys.map((k) => {
         const open = !closed[k];
         return `<div class="group">
           <button class="ghead ${k === 'Дутуу' ? 'yel' : (k === 'Эхлээгүй' ? 'grey' : '')}" data-act="tog" data-k="${h(k)}"><b>${h(k)}</b><span class="muted small">${groups[k].length} трансект ${open ? '▲' : '▼'}</span></button>
-          ${open ? `<div class="thead"><span>Трансект</span><span>Төлөв. км</span><span>Явсан км</span><span></span></div>${groups[k].map(row).join('')}` : ''}
+          ${open ? `<div class="thead"><span>Трансект</span><span>Төлөв. км</span><span>Явсан км<br>илүү/дутуу</span><span></span></div>${groups[k].map(row).join('')}` : ''}
         </div>`;
       }).join('')}
+      <div id="report">${reportHtml(survey, sightsAll, stats, !!closed.__repOpen)}</div>
     </div>
     <div class="footbar">
       <button class="btn grow" data-act="sendall">Бүх өгөгдлийг имэйлээр</button>
@@ -504,6 +506,7 @@ async function surveyView(sid) {
   syncStatusInto('syncst');
   const redrawReport = () => { const r = document.getElementById('report'); if (r) r.innerHTML = reportHtml(survey, sightsAll, stats, !!closed.__repOpen); };
   actions.rep = (el) => { reportSel = el.dataset.t; redrawReport(); };
+  actions.repmode = (el) => { reportMode = el.dataset.m; if (reportMode === 'all') reportSel = ''; redrawReport(); };
   actions.togrep = async () => { closed.__repOpen = !closed.__repOpen; await db.setMeta('closed-' + sid, closed); redrawReport(); };
   actions.tog = async (el) => { closed[el.dataset.k] = !closed[el.dataset.k]; await db.setMeta('closed-' + sid, closed); surveyView(sid); };
   actions.syncnow = () => { if (!navigator.onLine) toast('Интернэт алга. Холбогдмогц өөрөө илгээнэ.', 'warn'); sync.syncAll(); };
@@ -516,10 +519,12 @@ async function surveyView(sid) {
 
 // ---------- товч тайлан ----------
 let reportSel = '';
+let reportMode = 'all';
 function reportHtml(survey, sights, stats, open) {
   const tids = survey.transects.map((t) => t.id).filter((id) => sights.some((x) => x.tid === id) || stats[id].effortKm > 0);
   if (reportSel && !tids.includes(reportSel)) reportSel = '';
-  const sel = reportSel;
+  const each = reportMode === 'each';
+  const sel = each ? reportSel : '';
   const eff = sights.filter((x) => x.effort && (!sel || x.tid === sel));
   const off = sights.filter((x) => !x.effort && (!sel || x.tid === sel));
   const km = sel ? stats[sel].effortKm : survey.transects.reduce((a, t) => a + stats[t.id].effortKm, 0);
@@ -539,10 +544,12 @@ function reportHtml(survey, sights, stats, open) {
   return `<div class="group">
     <button class="ghead" data-act="togrep"><b>Товч тайлан</b><span class="muted small">${open ? '▲' : '▼'}</span></button>
     ${open ? `<div class="pad col">
-      <div class="chips"><button class="chip ${sel ? '' : 'on'}" data-act="rep" data-t="">Бүх трансект</button>${tids.map((id) => `<button class="chip ${sel === id ? 'on' : ''}" data-act="rep" data-t="${h(id)}">${h(id)}</button>`).join('')}</div>
-      <span class="small">Судалгааны зам: <b>${km.toFixed(1)} км</b> · бүртгэл: <b>${eff.length}</b></span>
+      <div class="grid2"><button class="btn small ${each ? '' : 'primary'}" data-act="repmode" data-m="all">Бүх замнал</button><button class="btn small ${each ? 'primary' : ''}" data-act="repmode" data-m="each">Замнал тус бүрээр</button></div>
+      ${each ? (tids.length ? `<div class="chips">${tids.map((id) => `<button class="chip ${sel === id ? 'on' : ''}" data-act="rep" data-t="${h(id)}">${h(id)}</button>`).join('')}</div>` : '<p class="muted small">Явсан замнал алга</p>') : ''}
+      ${each && !sel ? (tids.length ? '<p class="muted small">Замнал сонгоно уу</p>' : '') : `
+      <span class="small">${sel ? '<b>' + h(sel) + '</b> · ' : ''}Судалгааны зам: <b>${km.toFixed(1)} км</b> · бүртгэл: <b>${eff.length}</b></span>
       ${table(eff)}
-      ${off.length ? `<span class="small b">Судалгааны бус зам (тооллогод орохгүй)</span>${table(off)}` : ''}
+      ${off.length ? `<span class="small b">Судалгааны бус зам (тооллогод орохгүй)</span>${table(off)}` : ''}`}
     </div>` : ''}
   </div>`;
 }
@@ -632,10 +639,11 @@ async function runView(sid, tid) {
     <div id="rmap" class="rmap"></div>
     <div class="rtop">
       <div class="row between"><b class="big">${h(tid)}</b><span class="small" id="rstate"></span></div>
-      <div class="grid3 rstats">
+      <div class="grid4 rstats">
         <div><span>Явсан</span><b id="sdone">0.0 км</b></div>
         <div><span>Үлдсэн</span><b id="sleft">${(L_M / 1000).toFixed(1)} км</b></div>
         <div><span>Хугацаа</span><b id="stime">0:00</b></div>
+        <div><span>Хурд, км/ц</span><b id="sspeed">–</b></div>
       </div>
       <div class="prog"><div id="sprog"></div></div>
     </div>
@@ -856,6 +864,7 @@ async function runView(sid, tid) {
   const onFix = (f) => {
     if (!f || f.error) { if (f && f.error) banner(f.error, 'red', 5000); return; }
     const first = !R.fix;
+    const prev = R.fix;
     R.fix = f;
     const ll = [f.lat, f.lon];
     if (first) { arrow.addTo(map); accCircle.addTo(map); map.setView(ll, 14); }
@@ -889,9 +898,13 @@ async function runView(sid, tid) {
     document.getElementById('sleft').textContent = ((L_M - (run.maxAlong || 0)) / 1000).toFixed(1) + ' км';
     document.getElementById('stime').textContent = fmtDur(st.effortMs);
     document.getElementById('sprog').style.width = Math.min(100, (run.maxAlong || 0) / L_M * 100) + '%';
-    const kmh = f.speed != null ? f.speed * 3.6 : null;
+    // Хурд: GPS-ийн хурд, байхгүй бол өмнөх цэгээс тооцно
+    let kmh = f.speed != null && f.speed >= 0 ? f.speed * 3.6 : null;
+    if (kmh == null && prev && f.t > prev.t) kmh = geo.distance(prev.lat, prev.lon, f.lat, f.lon) / ((f.t - prev.t) / 1000) * 3.6;
+    const spEl = document.getElementById('sspeed');
+    if (spEl) { spEl.textContent = kmh != null ? Math.round(kmh) : '–'; spEl.classList.toggle('fast', kmh != null && kmh > 40); }
     const stEl = document.getElementById('rstate');
-    if (stEl && run.status === 'active') stEl.textContent = 'Судалгаа явж байна' + (kmh != null ? ' · ' + Math.round(kmh) + ' км/ц' : '');
+    if (stEl && run.status === 'active') stEl.textContent = 'Судалгаа явж байна';
     // Хурд
     if (run.status === 'active' && kmh != null) {
       // 40 км/ц-аас хэтэрвэл 3 дараалсан цэгийн дараа сануулж, хэтэрсэн хэвээр бол 30 секунд тутам давтана
@@ -931,10 +944,10 @@ async function runView(sid, tid) {
     const x = Math.abs(fr.cross);
     const dirTxt = fr.cross > 0 ? 'Зүүн' : 'Баруун';
     if (x >= settings.warn2) {
-      alertBox(`${dirTxt} тийш ${Math.round(x)} м`, 'red', fr.cross > 0 ? 'L' : 'R', `Шугамаас хэт хазайлаа (${settings.warn2} м-ээс их)`);
+      alertBox(`${dirTxt} тийш ${fmtKm(x)}`, 'red', fr.cross > 0 ? 'L' : 'R', `Шугамаас хэт хазайлаа (${settings.warn2} м-ээс их)`);
       if (Date.now() - R.lastAlertBeep > 8000) { beep(3, 1000); R.lastAlertBeep = Date.now(); }
     } else if (x >= settings.warn1) {
-      alertBox(`${dirTxt} тийш ${Math.round(x)} м`, 'yellow', fr.cross > 0 ? 'L' : 'R', `Шугамаас хазайлаа (${settings.warn2} м-ээс улаан дохио)`);
+      alertBox(`${dirTxt} тийш ${fmtKm(x)}`, 'yellow', fr.cross > 0 ? 'L' : 'R', `Шугамаас хазайлаа (${settings.warn2} м-ээс улаан дохио)`);
       if (R.alertLevel < 1) beep(1, 760);
     } else alertBox('', '');
     R.alertLevel = x >= settings.warn2 ? 2 : (x >= settings.warn1 ? 1 : 0);
