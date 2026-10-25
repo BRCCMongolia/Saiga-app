@@ -1,5 +1,5 @@
 // Офлайн ажиллагаа: аппын файлууд ба газрын зургийн хэсгүүдийг утсанд хадгална.
-const VERSION = 'v1.0.4';
+const VERSION = 'v1.0.7';
 const SHELL = 'shell-' + VERSION;
 const TILES = 'tiles-v1';
 const FILES = [
@@ -8,7 +8,7 @@ const FILES = [
   'js/vendor/leaflet.js', 'js/vendor/leaflet.css', 'js/vendor/xlsx.core.min.js', 'js/vendor/jszip.min.js',
   'js/vendor/images/layers.png', 'js/vendor/images/layers-2x.png', 'js/vendor/images/marker-icon.png', 'js/vendor/images/marker-icon-2x.png',
   'data/transects-2026.json', 'data/species.json',
-  'img/icon-192.png', 'img/icon-512.png', 'img/brcc.jpg', 'img/wwf.png', 'img/transect-map.jpg', 'img/method.png',
+  'img/icon-192.png', 'img/icon-512.png', 'img/brcc.png', 'img/wwf.png', 'img/transect-map.jpg', 'img/method.png',
 ];
 
 self.addEventListener('install', (e) => {

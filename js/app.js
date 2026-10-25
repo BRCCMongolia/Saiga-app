@@ -91,7 +91,7 @@ async function homeView() {
     <div class="hero">
       <div class="logos">
         <div class="logo"><img src="img/wwf.png" alt="WWF" class="wwf"><span>Дэлхийн байгаль хамгаалах сан (WWF)-гийн Монгол дахь хөтөлбөрийн газар</span></div>
-        <div class="logo"><img src="img/brcc.jpg" alt="BRCC" class="brcc"><span class="green">Биологийн Нөөцийг Хамгаалах Төв ТББ</span></div>
+        <div class="logo"><img src="img/brcc.png" alt="BRCC" class="brcc"><span class="green">Биологийн Нөөцийг Хамгаалах Төв ТББ</span></div>
       </div>
       <div class="brand"><img src="img/icon-192.png" alt="" class="appicon"><div><h1>Saiga survey</h1><p>Бөхөн тооллого · шугаман трансект</p></div></div>
     </div>
@@ -101,7 +101,8 @@ async function homeView() {
         <a class="card tile" href="#/guide">${ICON.book}<b>Удирдамж</b><span class="muted small">Зорилго, шаардлага</span></a>
         <a class="card tile" href="#/method">${ICON.angle}<b>Арга зүй</b><span class="muted small">Зай, өнцөг хэмжих</span></a>
       </div>
-      <a class="btn big primary" href="#/new">${ICON.plus} Судалгаа эхлүүлэх</a>
+      <button class="btn big primary" data-act="newsurvey">${ICON.plus} Судалгаа эхлүүлэх</button>
+      <p class="muted small hint">Судалгааг жилд нэг л удаа эхлүүлнэ. Эхлүүлсэн бол доорх жагсаалтаас судалгаагаа нээж үргэлжлүүлнэ үү.</p>
       <h3 class="section">Судалгаанууд</h3>
       ${rows || '<p class="muted">Одоогоор судалгаа алга.</p>'}
       <div class="row between foot">
@@ -111,6 +112,21 @@ async function homeView() {
     </div>
   </div>`;
   syncStatusInto('syncst');
+  actions.newsurvey = async () => {
+    const y = new Date().getFullYear();
+    const cur = surveys.find((s) => new Date(s.createdAt).getFullYear() === y);
+    if (cur) {
+      const r = await modal({
+        title: `${y} онд судалгаа эхэлсэн байна`,
+        body: `<p><b>${h(cur.name)}</b></p><p>Судалгааг жилд нэг л удаа эхлүүлнэ. Өмнө эхлүүлсэн судалгаагаа үргэлжлүүлнэ үү.</p>`,
+        buttons: [{ label: 'Шинээр эхлүүлэх', value: 'new' }, { label: 'Үргэлжлүүлэх', value: 'open', cls: 'primary' }],
+      });
+      if (r === 'open') return go('#/s/' + encodeURIComponent(cur.id));
+      if (r !== 'new') return;
+      if (!(await confirmBox('Үнэхээр шинэ судалгаа эхлүүлэх үү?', 'Шинэ судалгаа тусдаа жагсаалт болж үүснэ. Өмнөх судалгааны өгөгдөл хэвээр үлдэнэ.', 'Шинээр эхлүүлэх', 'Болих'))) return;
+    }
+    go('#/new');
+  };
 }
 
 function syncStatusInto(id) {
@@ -429,6 +445,7 @@ async function surveyView(sid) {
   }
   const dates = order.filter((k) => /^\d{4}\./.test(k)).sort().reverse();
   const keys = ['Явж байна', 'Дутуу', ...dates].filter((k) => groups[k]);
+  const sightsAll = (await db.byIndex('sightings', 'survey', sid)).filter((x) => !x.deleted);
   const notStarted = survey.transects.filter((t) => runs[t.id].status === 'new');
   if (notStarted.length) { groups['Эхлээгүй'] = notStarted; keys.push('Эхлээгүй'); }
   const row = (t) => {
@@ -453,6 +470,7 @@ async function surveyView(sid) {
         <div class="stat"><span>Явсан</span><b>${drivenKm.toFixed(1)} км</b></div>
         <div class="stat"><span>Үлдсэн</span><b class="orange">${remainKm.toFixed(1)} км</b></div>
       </div>
+      <div id="report">${reportHtml(survey, sightsAll, stats, !!closed.__repOpen)}</div>
       ${keys.map((k) => {
         const open = !closed[k];
         return `<div class="group">
@@ -468,6 +486,9 @@ async function surveyView(sid) {
     <div class="muted small center" id="syncst" style="padding:0 12px 10px"></div>
   </div>`;
   syncStatusInto('syncst');
+  const redrawReport = () => { const r = document.getElementById('report'); if (r) r.innerHTML = reportHtml(survey, sightsAll, stats, !!closed.__repOpen); };
+  actions.rep = (el) => { reportSel = el.dataset.t; redrawReport(); };
+  actions.togrep = async () => { closed.__repOpen = !closed.__repOpen; await db.setMeta('closed-' + sid, closed); redrawReport(); };
   actions.tog = async (el) => { closed[el.dataset.k] = !closed[el.dataset.k]; await db.setMeta('closed-' + sid, closed); surveyView(sid); };
   actions.syncnow = () => { if (!navigator.onLine) toast('Интернэт алга. Холбогдмогц өөрөө илгээнэ.', 'warn'); sync.syncAll(); };
   actions.sendall = async () => {
@@ -481,6 +502,39 @@ async function surveyView(sid) {
     o.querySelector('.closebtn').onclick = () => o.remove();
     document.body.appendChild(o);
   };
+}
+
+// ---------- товч тайлан ----------
+let reportSel = '';
+function reportHtml(survey, sights, stats, open) {
+  const tids = survey.transects.map((t) => t.id).filter((id) => sights.some((x) => x.tid === id) || stats[id].effortKm > 0);
+  if (reportSel && !tids.includes(reportSel)) reportSel = '';
+  const sel = reportSel;
+  const eff = sights.filter((x) => x.effort && (!sel || x.tid === sel));
+  const off = sights.filter((x) => !x.effort && (!sel || x.tid === sel));
+  const km = sel ? stats[sel].effortKm : survey.transects.reduce((a, t) => a + stats[t.id].effortKm, 0);
+  const rows = (list) => {
+    const by = {};
+    for (const x of list) (by[x.species] = by[x.species] || []).push(+x.total || 0);
+    const order = QUICK_SPECIES.map((q) => q.mn);
+    return Object.entries(by).sort((a, b) => {
+      const ia = order.indexOf(a[0]), ib = order.indexOf(b[0]);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a[0].localeCompare(b[0]);
+    }).map(([sp, v]) => {
+      const sum = v.reduce((a, b) => a + b, 0);
+      return `<tr><td>${h(sp)}</td><td>${v.length}</td><td><b>${sum}</b></td><td>${(sum / v.length).toFixed(1)}</td><td>${Math.min(...v)}</td><td>${Math.max(...v)}</td></tr>`;
+    }).join('');
+  };
+  const table = (list) => (list.length ? `<div class="rtable"><table><thead><tr><th>Зүйл</th><th>Сүрэг</th><th>Нийт</th><th>Дундаж</th><th>Мин</th><th>Макс</th></tr></thead><tbody>${rows(list)}</tbody></table></div>` : '<p class="muted small">Бүртгэл алга</p>');
+  return `<div class="group">
+    <button class="ghead" data-act="togrep"><b>Товч тайлан</b><span class="muted small">${open ? '▲' : '▼'}</span></button>
+    ${open ? `<div class="pad col">
+      <div class="chips"><button class="chip ${sel ? '' : 'on'}" data-act="rep" data-t="">Бүх трансект</button>${tids.map((id) => `<button class="chip ${sel === id ? 'on' : ''}" data-act="rep" data-t="${h(id)}">${h(id)}</button>`).join('')}</div>
+      <span class="small">Судалгааны зам: <b>${km.toFixed(1)} км</b> · бүртгэл: <b>${eff.length}</b></span>
+      ${table(eff)}
+      ${off.length ? `<span class="small b">Судалгааны бус зам (тооллогод орохгүй)</span>${table(off)}` : ''}
+    </div>` : ''}
+  </div>`;
 }
 
 // ---------- трансектын дэлгэрэнгүй ----------
@@ -690,6 +744,7 @@ async function runView(sid, tid) {
   const needFix = () => { if (!R.fix) { toast('GPS байрлал хүлээж байна...', 'warn'); return false; } return true; };
 
   actions.start = async () => {
+    if (t.id === '23B' && run.status === 'new' && !(await confirmBox('23B трансект', '23B нь гэрээний газрын зураг дээр байхгүй тул хасагдсан байх магадлалтай. Багийн ахлагчаас лавлаад эхлүүлнэ үү. Эхлүүлэх үү?', 'Эхлүүлэх', 'Болих'))) return;
     if (!needFix()) return;
     const f = R.fix;
     const dA = geo.distance(f.lat, f.lon, t.a[1], t.a[0]), dB = geo.distance(f.lat, f.lon, t.b[1], t.b[0]);
