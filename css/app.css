@@ -315,3 +315,9 @@ a.note { display: block; text-decoration: none; }
 .rback { left: 14px; top: calc(14px + var(--safe-t)); }
 .ralert { top: calc(146px + var(--safe-t)); }
 .nowrap { white-space: nowrap; }
+.dhead { padding: 8px 14px; background: #F3F7F4; border-top: 1px solid var(--line); font-weight: 700; color: var(--green); font-size: 14px; }
+/* Замналын дэлгэц: бичиг Safari-гийн дээд бүдгэрэлтээс доош, доод товчнууд 20 px доош */
+.rtop { padding-top: calc(30px + var(--safe-t)); }
+.rback { top: calc(34px + var(--safe-t)); }
+.ralert { top: calc(166px + var(--safe-t)); }
+.rbottom { padding-bottom: max(6px, calc(var(--safe-b) - 6px)); }

@@ -566,7 +566,8 @@ async function surveyView(sid) {
     else if (r.status === 'done' || r.status === 'incomplete') addTo(fmtDate(stats[t.id].first ? stats[t.id].first.t : Date.now()), t);
   }
   const dates = order.filter((k) => /^\d{4}\./.test(k)).sort().reverse();
-  const keys = ['Явж байна', 'Түр зогссон', ...dates].filter((k) => groups[k]);
+  const keys = ['Явж байна', 'Түр зогссон'].filter((k) => groups[k]);
+  const doneCount = dates.reduce((a, k) => a + groups[k].length, 0);
   const sightsAll = (await db.byIndex('sightings', 'survey', sid)).filter((x) => !x.deleted);
   const notStarted = survey.transects.filter((t) => runs[t.id].status === 'new');
   if (notStarted.length) { groups['Эхлээгүй'] = notStarted; keys.push('Эхлээгүй'); }
@@ -596,10 +597,25 @@ async function surveyView(sid) {
         <div class="stat"><span>Явсан</span><b>${drivenKm.toFixed(1)} км</b></div>
         <div class="stat"><span>Үлдсэн</span><b class="orange">${remainKm.toFixed(1)} км</b></div>
       </div>
-      ${keys.map((k) => {
+      ${keys.filter((k) => k !== 'Эхлээгүй').map((k) => {
         const open = !closed[k];
         return `<div class="group">
-          <button class="ghead ${k === 'Түр зогссон' ? 'yel' : (k === 'Эхлээгүй' ? 'grey' : '')}" data-act="tog" data-k="${h(k)}"><b>${/^\d{4}\./.test(k) ? `Дууссан замнал <span class="small muted">${h(k)}</span>` : h(k)}</b><span class="muted small">${groups[k].length} трансект ${open ? '▲' : '▼'}</span></button>
+          <button class="ghead ${k === 'Түр зогссон' ? 'yel' : (k === 'Эхлээгүй' ? 'grey' : '')}" data-act="tog" data-k="${h(k)}"><b>${h(k)}</b><span class="muted small">${groups[k].length} трансект ${open ? '▲' : '▼'}</span></button>
+          ${open ? `<div class="thead"><span>Трансект</span><span>Төлөв.<br>км</span><span>Явсан<br>км</span><span>Илүү/<br>дутуу</span><span></span></div>${groups[k].map(row).join('')}` : ''}
+        </div>`;
+      }).join('')}
+      ${doneCount ? (() => {
+        // Дууссан замналууд нэг хэсэгт, дотор нь өдрөөр (сүүлийн өдөр эхэнд)
+        const open = !closed.__done;
+        return `<div class="group">
+          <button class="ghead" data-act="tog" data-k="__done"><b>Дууссан замнал</b><span class="muted small">${doneCount} трансект ${open ? '▲' : '▼'}</span></button>
+          ${open ? `<div class="thead"><span>Трансект</span><span>Төлөв.<br>км</span><span>Явсан<br>км</span><span>Илүү/<br>дутуу</span><span></span></div>${dates.map((k) => `<div class="dhead">${h(k)}</div>${groups[k].map(row).join('')}`).join('')}` : ''}
+        </div>`;
+      })() : ''}
+      ${keys.filter((k) => k === 'Эхлээгүй').map((k) => {
+        const open = !closed[k];
+        return `<div class="group">
+          <button class="ghead ${k === 'Түр зогссон' ? 'yel' : (k === 'Эхлээгүй' ? 'grey' : '')}" data-act="tog" data-k="${h(k)}"><b>${h(k)}</b><span class="muted small">${groups[k].length} трансект ${open ? '▲' : '▼'}</span></button>
           ${open ? `<div class="thead"><span>Трансект</span><span>Төлөв.<br>км</span><span>Явсан<br>км</span><span>Илүү/<br>дутуу</span><span></span></div>${groups[k].map(row).join('')}` : ''}
         </div>`;
       }).join('')}
