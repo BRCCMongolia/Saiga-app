@@ -561,11 +561,12 @@ async function surveyView(sid) {
   for (const t of survey.transects) {
     const r = runs[t.id];
     if (r.status === 'active') addTo('Явж байна', t);
-    else if (r.status === 'paused' || r.status === 'returning' || r.status === 'incomplete') addTo('Дутуу', t);
-    else if (r.status === 'done') addTo(fmtDate(stats[t.id].first ? stats[t.id].first.t : Date.now()), t);
+    else if (r.status === 'paused' || r.status === 'returning') addTo('Түр зогссон', t);
+    // "Дутуу дуусгах"-аар дуусгасан ч дууссанд тооцно (дутуу км нь Илүү/дутуу баганад)
+    else if (r.status === 'done' || r.status === 'incomplete') addTo(fmtDate(stats[t.id].first ? stats[t.id].first.t : Date.now()), t);
   }
   const dates = order.filter((k) => /^\d{4}\./.test(k)).sort().reverse();
-  const keys = ['Явж байна', 'Дутуу', ...dates].filter((k) => groups[k]);
+  const keys = ['Явж байна', 'Түр зогссон', ...dates].filter((k) => groups[k]);
   const sightsAll = (await db.byIndex('sightings', 'survey', sid)).filter((x) => !x.deleted);
   const notStarted = survey.transects.filter((t) => runs[t.id].status === 'new');
   if (notStarted.length) { groups['Эхлээгүй'] = notStarted; keys.push('Эхлээгүй'); }
@@ -573,13 +574,13 @@ async function surveyView(sid) {
     const r = runs[t.id], st = stats[t.id];
     let act = '';
     if (r.status === 'new') act = `<a class="mini dark" href="#/run/${encodeURIComponent(sid)}/${encodeURIComponent(t.id)}">Эхлэх</a>`;
-    else if (r.status === 'done') act = '<span class="pill green">Дууссан</span>';
+    else if (r.status === 'done' || r.status === 'incomplete') act = '<span class="pill green">Дууссан</span>';
     else if (r.status === 'active') act = `<a class="mini orange" href="#/run/${encodeURIComponent(sid)}/${encodeURIComponent(t.id)}">Нээх</a>`;
     else act = `<a class="mini yellow" href="#/run/${encodeURIComponent(sid)}/${encodeURIComponent(t.id)}">Үргэлжлүүлэх</a>`;
     // Төлөвлөсөнтэй харьцуулсан илүү/дутуу (явсан судалгааны зам - төлөвлөсөн урт)
     const diff = st.effortKm - t.km;
     const extra = r.status === 'new' ? '<span>–</span>' : `<span class="diff ${diff >= 0 ? 'green' : 'warn'}">${diff >= 0 ? '+' : '−'}${Math.abs(diff).toFixed(1)}</span>`;
-    return `<div class="trow ${r.status === 'incomplete' || r.status === 'paused' || r.status === 'returning' ? 'yel' : ''}">
+    return `<div class="trow ${r.status === 'paused' || r.status === 'returning' ? 'yel' : ''}">
       <a href="#/t/${encodeURIComponent(sid)}/${encodeURIComponent(t.id)}" class="tid">${h(t.id)}</a>
       <span>${t.km.toFixed(1)}</span><span class="b">${r.status === 'new' ? '–' : st.effortKm.toFixed(1)}</span>${extra}${act}</div>`;
   };
@@ -588,7 +589,7 @@ async function surveyView(sid) {
     <div class="subhead">${survey.startDate ? fmtDate(survey.startDate) + ' – ' + (survey.endDate ? fmtDate(survey.endDate) : '') : 'Эхлээгүй'} · Ахлагч: ${h(survey.leader || '-')} · Судлаач: ${h(survey.researchers.join(', ') || '-')} · Бүртгэгч: ${h(survey.recorder)}</div>
     <div class="scroll pad col">
       <div class="smapwrap"><div id="smap" class="smap"></div>
-        <div class="smaplegend"><span><i style="background:#2E7D4F"></i>Дууссан</span><span><i style="background:#E0A800"></i>Дутуу</span><span><i style="background:#9AA39D"></i>Эхлээгүй</span></div>
+        <div class="smaplegend"><span><i style="background:#2E7D4F"></i>Дууссан</span><span><i style="background:#E0A800"></i>Түр зогссон</span><span><i style="background:#9AA39D"></i>Эхлээгүй</span></div>
         <button class="smapbtn" data-act="zoomimg">Замналын фото зураг харах</button></div>
       <div class="grid3">
         <div class="stat"><span>Дууссан замнал</span><b class="green">${doneN} / ${survey.transects.length}</b></div>
@@ -598,7 +599,7 @@ async function surveyView(sid) {
       ${keys.map((k) => {
         const open = !closed[k];
         return `<div class="group">
-          <button class="ghead ${k === 'Дутуу' ? 'yel' : (k === 'Эхлээгүй' ? 'grey' : '')}" data-act="tog" data-k="${h(k)}"><b>${/^\d{4}\./.test(k) ? `Дууссан замнал <span class="small muted">${h(k)}</span>` : h(k)}</b><span class="muted small">${groups[k].length} трансект ${open ? '▲' : '▼'}</span></button>
+          <button class="ghead ${k === 'Түр зогссон' ? 'yel' : (k === 'Эхлээгүй' ? 'grey' : '')}" data-act="tog" data-k="${h(k)}"><b>${/^\d{4}\./.test(k) ? `Дууссан замнал <span class="small muted">${h(k)}</span>` : h(k)}</b><span class="muted small">${groups[k].length} трансект ${open ? '▲' : '▼'}</span></button>
           ${open ? `<div class="thead"><span>Трансект</span><span>Төлөв.<br>км</span><span>Явсан<br>км</span><span>Илүү/<br>дутуу</span><span></span></div>${groups[k].map(row).join('')}` : ''}
         </div>`;
       }).join('')}
@@ -628,7 +629,7 @@ async function surveyView(sid) {
   // Трансектын жижиг зураг: зөвхөн шугам, төлөвөөр өнгөтэй (явсан замгүй, интернэтгүй ажиллана)
   const smap = L.map('smap', { zoomControl: false, attributionControl: false, zoomSnap: 0.1 });
   cleanup.push(() => smap.remove());
-  const colorOf = (st) => (st === 'done' ? '#2E7D4F' : st === 'new' ? '#9AA39D' : st === 'active' ? '#C2410C' : '#E0A800');
+  const colorOf = (st) => (st === 'done' || st === 'incomplete' ? '#2E7D4F' : st === 'new' ? '#9AA39D' : st === 'active' ? '#C2410C' : '#E0A800');
   const bounds = [];
   for (const t of survey.transects) {
     const ll = [[t.a[1], t.a[0]], [t.b[1], t.b[0]]];
@@ -735,7 +736,7 @@ async function detailView(sid, tid) {
   const species = {};
   sights.filter((s) => !s.deleted && s.effort).forEach((s) => { species[s.species] = (species[s.species] || 0) + (+s.total || 0); });
   $app.innerHTML = `<div class="screen">
-    ${topbar(tid, '#/s/' + encodeURIComponent(sid), `<span class="pill ${run.status === 'done' ? 'green' : 'yellow'}">${STATUS_MN[run.status]}${run.status === 'incomplete' ? ' ' + st.remainingKm.toFixed(1) + ' км' : ''}</span>`)}
+    ${topbar(tid, '#/s/' + encodeURIComponent(sid), `<span class="pill ${run.status === 'done' || run.status === 'incomplete' ? 'green' : 'yellow'}">${run.status === 'incomplete' ? 'Дууссан' : STATUS_MN[run.status]}</span>`)}
     <div id="dmap" class="dmap"></div>
     <div class="scroll pad col">
       <div class="grid3">
@@ -1033,11 +1034,11 @@ async function runView(sid, tid) {
     const delBtn = '<button class="btn small danger" data-act="delrun">Замнал устгах</button>';
     if (run.status === 'new') el.innerHTML = `${rec}<div class="row gap"><button class="btn big grow primary" data-act="start">Эхлэх</button></div>`;
     else if (run.status === 'active') el.innerHTML = `${rec}<div class="row gap"><button class="btn grow" data-act="pause">Түр зогсоох</button><button class="btn grow dark" data-act="finish">Дуусгах</button></div>`;
-    else if (run.status === 'paused' || run.status === 'returning' || run.status === 'incomplete') el.innerHTML = `${rec}<div class="row gap"><button class="btn grow yellowbtn" data-act="resume">Эхлэх (үргэлжлүүлэх)</button><button class="btn grow dark" data-act="finish">Дуусгах</button></div>${delBtn}`;
+    else if (run.status === 'paused' || run.status === 'returning') el.innerHTML = `${rec}<div class="row gap"><button class="btn grow yellowbtn" data-act="resume">Эхлэх (үргэлжлүүлэх)</button><button class="btn grow dark" data-act="finish">Дуусгах</button></div>${delBtn}`;
     else el.innerHTML = `<div class="banner green">Энэ трансект дууссан</div><div class="row gap"><a class="btn grow" href="#/t/${encodeURIComponent(sid)}/${encodeURIComponent(tid)}">Дэлгэрэнгүй</a><button class="btn grow" data-act="reopen">Дахин нээх</button></div>${delBtn}`;
     drawScale();
     const stEl = document.getElementById('rstate');
-    if (stEl) stEl.textContent = { new: 'Эхлээгүй', active: 'Судалгаа явж байна', paused: 'Түр зогссон', returning: 'Түр зогссон · шугам руу', done: 'Дууссан', incomplete: 'Дутуу' }[run.status];
+    if (stEl) stEl.textContent = { new: 'Эхлээгүй', active: 'Судалгаа явж байна', paused: 'Түр зогссон', returning: 'Түр зогссон · шугам руу', done: 'Дууссан', incomplete: 'Дууссан' }[run.status];
   };
 
   const saveRun = async () => { run.synced = false; run.rev = Date.now(); await db.put('runs', run); };
