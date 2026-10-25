@@ -99,7 +99,11 @@ img { max-width: 100%; }
 .ghead { width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; background: var(--greenbg); border: 0; text-align: left; min-height: 48px; }
 .ghead.yel { background: var(--yellowbg); }
 .ghead.grey { background: #EEEBE4; }
-.thead, .trow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 0.9fr) minmax(0, 0.9fr) minmax(0, 0.9fr) auto; align-items: center; gap: 4px; padding: 8px 12px; }
+.thead, .trow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 0.9fr) minmax(0, 0.9fr) minmax(0, 1fr) 104px; align-items: center; gap: 4px; padding: 8px 12px; }
+.thead > :nth-child(n+2):nth-child(-n+4), .trow > :nth-child(n+2):nth-child(-n+4) { text-align: center; }
+.trow > :nth-child(n+2):nth-child(-n+4) { white-space: nowrap; }
+.thead { line-height: 1.25; }
+.trow .mini { font-size: 12.5px; padding: 0 6px; max-width: 104px; }
 .thead { font-size: 11px; color: var(--muted); border-bottom: 1px solid var(--line); }
 .trow { border-bottom: 1px solid #EFE8DA; min-height: 54px; font-size: 15px; }
 .trow:last-child { border-bottom: 0; }

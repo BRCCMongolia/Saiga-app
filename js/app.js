@@ -502,7 +502,7 @@ async function surveyView(sid) {
         const open = !closed[k];
         return `<div class="group">
           <button class="ghead ${k === 'Дутуу' ? 'yel' : (k === 'Эхлээгүй' ? 'grey' : '')}" data-act="tog" data-k="${h(k)}"><b>${/^\d{4}\./.test(k) ? `Дууссан замнал <span class="small muted">${h(k)}</span>` : h(k)}</b><span class="muted small">${groups[k].length} трансект ${open ? '▲' : '▼'}</span></button>
-          ${open ? `<div class="thead"><span>Трансект</span><span>Төлөв. км</span><span>Явсан км</span><span>Илүү/<br>дутуу</span><span></span></div>${groups[k].map(row).join('')}` : ''}
+          ${open ? `<div class="thead"><span>Трансект</span><span>Төлөв.<br>км</span><span>Явсан<br>км</span><span>Илүү/<br>дутуу</span><span></span></div>${groups[k].map(row).join('')}` : ''}
         </div>`;
       }).join('')}
       <div id="report">${reportHtml(survey, sightsAll, stats, !!closed.__repOpen)}</div>
