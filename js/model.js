@@ -88,7 +88,7 @@ export const fmtTime = (t) => { const d = new Date(t); return pad(d.getHours()) 
 export const fmtDur = (ms) => { const m = Math.round(ms / 60000); return Math.floor(m / 60) + ':' + pad(m % 60); };
 export const r5 = (x) => (x == null || x === '' ? '' : Math.round(x * 1e5) / 1e5);
 
-export const SIGHTING_HEADERS = ['Трансект дугаар', 'Огноо', 'Эхэлсэн цаг', 'Дууссан цаг', 'д/д', 'цаг', 'зүйл', 'нийт', 'эр', 'эм', 'төл', 'зай, м', 'өнцөг', 'gps нэр', 'өргөрөг', 'уртраг', 'өндөр, м', 'цас', 'алаг өвс, өндөр', 'алаг өвс, бүрхэц %', 'үетэн, өндөр', 'үетэн, бүрхэц %', 'бут, өндөр', 'бут, бүрхэц %', 'тэмдэглэл', 'тодорхойгүй', 'латин нэр', 'амьтны өргөрөг', 'амьтны уртраг', 'бүртгэгч', 'судалгаа', 'зураг', 'зургийн тайлбар', 'төлөв', 'id'];
+export const SIGHTING_HEADERS = ['Трансект дугаар', 'Огноо', 'Эхэлсэн цаг', 'Дууссан цаг', 'д/д', 'цаг', 'зүйл', 'нийт', 'эр', 'эм', 'төл', 'тодорхойгүй', 'зай, м', 'өнцөг', 'gps нэр', 'өргөрөг', 'уртраг', 'өндөр, м', 'цас', 'алаг өвс, өндөр', 'алаг өвс, бүрхэц %', 'үетэн, өндөр', 'үетэн, бүрхэц %', 'бут, өндөр', 'бут, бүрхэц %', 'тэмдэглэл', 'латин нэр', 'амьтны өргөрөг', 'амьтны уртраг', 'бүртгэгч', 'судалгаа', 'зураг', 'зургийн тайлбар', 'төлөв', 'id'];
 
 export function sightingRow(s, run, survey, idx) {
   const ev = run ? run.events : [];
@@ -139,7 +139,7 @@ export function transectRow(run, t, points, survey) {
 export function fileBase(survey) {
   const d = new Date(survey.createdAt);
   const tr = (s) => translit(s || '').replace(/[^A-Za-z0-9]+/g, '');
-  return 'Bag4_Sharga_' + d.getFullYear() + '_' + (tr(survey.recorder) || 'X');
+  return (survey.test ? 'TEST_' : '') + 'Bag4_Sharga_' + d.getFullYear() + '_' + (tr(survey.recorder) || 'X');
 }
 
 const TR = { а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'yo', ж: 'j', з: 'z', и: 'i', й: 'i', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', ө: 'u', п: 'p', р: 'r', с: 's', т: 't', у: 'u', ү: 'u', ф: 'f', х: 'kh', ц: 'ts', ч: 'ch', ш: 'sh', щ: 'sh', ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu', я: 'ya' };

@@ -45,6 +45,16 @@ async function init() {
 
 async function saveSettings() { await db.setMeta('settings', settings); }
 
+// Санах ой дүүрсэн ба бусад баригдаагүй алдааг хэрэглэгчид харуулна
+let lastStorageWarn = 0;
+function storageError(e, force) {
+  const quota = e && (e.name === 'QuotaExceededError' || /quota/i.test(e.message || ''));
+  if (!force && Date.now() - lastStorageWarn < 30000) return;
+  lastStorageWarn = Date.now();
+  toast(quota ? 'Утасны санах ой дүүрсэн байна. Зураг, видео устгаж зай гаргана уу. Өгөгдөл хадгалагдахгүй байна!' : 'Хадгалах үед алдаа гарлаа: ' + ((e && e.message) || e), 'err', 8000);
+}
+window.addEventListener('unhandledrejection', (ev) => { console.error(ev.reason); storageError(ev.reason); });
+
 let goNav = false;
 function go(hash) { if (location.hash === hash) route(); else { goNav = true; location.hash = hash; } }
 
@@ -104,7 +114,7 @@ const topbar = (title, back = '#/', extra = '') => `<header class="top"><a class
 async function homeView() {
   const surveys = (await db.all('surveys')).filter((x) => !x.deleted).sort((a, b) => (!!a.test - !!b.test) || b.createdAt - a.createdAt);
   const runs = await db.all('runs');
-  const active = runs.find((r) => r.status === 'active' || r.status === 'returning');
+  const active = runs.find((r) => r.status === 'active') || runs.find((r) => r.status === 'returning');
   const rows = surveys.map((s) => {
     const rs = runs.filter((r) => r.surveyId === s.id && r.status !== 'deleted');
     const done = rs.filter((r) => r.status === 'done' || r.status === 'incomplete').length;
@@ -1035,7 +1045,14 @@ async function runView(sid, tid) {
     const f = R.fix;
     run.events.push({ type, t: Date.now(), lat: f.lat, lon: f.lon, alt: f.alt ?? null, ...extra });
   };
-  const needFix = () => { if (!R.fix) { toast('GPS байрлал хүлээж байна...', 'warn'); return false; } return true; };
+  const fixAge = () => (R.fix ? Math.round((Date.now() - R.fix.t) / 1000) : Infinity);
+  // GPS 15 секундээс хуучин бол байрлал буруу байж болзошгүйг асууна
+  const needFix = async () => {
+    if (!R.fix) { toast('GPS байрлал хүлээж байна...', 'warn'); return false; }
+    const age = fixAge();
+    if (age > 15 && !(await confirmBox(`GPS хуучин байна (${age} сек)`, 'Сүүлийн GPS байрлал хуучин тул буруу байж болно. Утсаа цонх руу ойртуулаад хүлээх нь зүйтэй. Энэ байрлалаар үргэлжлүүлэх үү?', 'Үргэлжлүүлэх', 'Хүлээх'))) return false;
+    return true;
+  };
 
   actions.delrun = async () => {
     if (run.status === 'active') return;
@@ -1051,7 +1068,7 @@ async function runView(sid, tid) {
   actions.start = async () => {
     if (await otherOpen()) return;
     if (t.id === '23B' && run.status === 'new' && !(await confirmBox('23B трансект', '23B нь гэрээний газрын зураг дээр байхгүй тул хасагдсан байх магадлалтай. Багийн ахлагчаас лавлаад эхлүүлнэ үү. Эхлүүлэх үү?', 'Эхлүүлэх', 'Болих'))) return;
-    if (!needFix()) return;
+    if (!(await needFix())) return;
     const f = R.fix;
     const dA = geo.distance(f.lat, f.lon, t.a[1], t.a[0]), dB = geo.distance(f.lat, f.lon, t.b[1], t.b[0]);
     const near = Math.min(dA, dB);
@@ -1074,7 +1091,7 @@ async function runView(sid, tid) {
   };
 
   actions.pause = async () => {
-    if (!needFix()) return;
+    if (!(await needFix())) return;
     const res = await pauseDialog(tid);
     if (!res) return;
     event('pause', { reason: res });
@@ -1088,7 +1105,7 @@ async function runView(sid, tid) {
 
   actions.resume = async () => {
     if (await otherOpen()) return;
-    if (!needFix()) return;
+    if (!(await needFix())) return;
     const [S, E] = ends();
     const fr = geo.lineFrame(S[0], S[1], E[0], E[1], R.fix.lat, R.fix.lon);
     if (Math.abs(fr.cross) > 100 && !(await confirmBox('Шугамаас хол байна', `Шугамаас ${Math.round(Math.abs(fr.cross))} м зайтай байна. Энд эхлэх үү?`, 'Эхлэх', 'Болих'))) return;
@@ -1113,7 +1130,7 @@ async function runView(sid, tid) {
   };
 
   actions.finish = async () => {
-    if (!needFix()) return;
+    if (!(await needFix())) return;
     const remaining = Math.max(0, L_M - (run.maxAlong || 0));
     let reason = '';
     if (remaining > 200) {
@@ -1169,12 +1186,13 @@ async function runView(sid, tid) {
     return true;
   };
 
-  actions.record = () => {
-    if (!needFix()) return;
+  actions.record = async () => {
+    // GPS муу/хуучин байсан ч бүртгэлийг хориглохгүй, маягт дээр сануулна
+    if (!R.fix) { toast('GPS байрлал хүлээж байна...', 'warn'); return; }
     const f = R.fix;
     openRecord({
       survey, t, map,
-      obs: { t: Date.now(), lat: f.lat, lon: f.lon, alt: f.alt ?? null, effort: run.status === 'active' },
+      obs: { t: Date.now(), lat: f.lat, lon: f.lon, alt: f.alt ?? null, effort: run.status === 'active', age: fixAge(), acc: f.acc ?? null },
       onDone: () => drawSights(),
     });
   };
@@ -1247,7 +1265,7 @@ async function runView(sid, tid) {
         if (lp && lp.seg === run.seg && effort && moved !== Infinity) R.effortM += moved;
         R.lastPt = p;
         if (effort) R.lastEffortPt = p;
-        R.pendingSave = R.pendingSave.then(() => db.put('points', p)).catch((e) => console.error(e));
+        R.pendingSave = R.pendingSave.then(() => db.put('points', p)).catch((e) => { console.error(e); storageError(e); });
         const key = p.seg + '|' + p.effort;
         if (key !== curKey) { curLine = L.polyline([], lineStyle(effort)).addTo(map); curKey = key; }
         curLine.addLatLng(ll);
@@ -1433,6 +1451,9 @@ async function pauseDialog(tid) {
 }
 
 // ---------- + Бүртгэл маягт ----------
+// "2,5" ба "2.5" хоёуланг 2.5 гэж уншина
+const decNum = (v) => { v = String(v).trim().replace(',', '.'); return v === '' || isNaN(+v) ? null : +v; };
+
 function openRecord({ survey, t, obs, sighting, onDone }) {
   const editing = !!sighting;
   const s = sighting ? { ...sighting } : {
@@ -1441,10 +1462,11 @@ function openRecord({ survey, t, obs, sighting, onDone }) {
     dist: null, angle: null, snow: null, forbH: null, forbC: null, grassH: null, grassC: null, shrubH: null, shrubC: null,
     note: '', photos: [], recorder: survey.recorder, deleted: false, synced: false,
   };
+  let snap0 = '';
   const newPhotos = []; // {id, blob, caption}
   let existingPhotos = [];
   let open = null; // аль тоо сонгогч нээлттэй
-  let warnedMissing = false;
+  let warnedMissing = false, warnedFar = false;
   let vegOpen = true;
   const quick = () => QUICK_SPECIES.find((q) => q.mn === s.species) || null;
   const isQuick = (q) => (q.other ? (s.species && !QUICK_SPECIES.some((x) => x.mn === s.species) && !/ сэг$/.test(s.species)) : q.carcass ? / сэг$/.test(s.species) : s.species === q.mn);
@@ -1475,6 +1497,7 @@ function openRecord({ survey, t, obs, sighting, onDone }) {
       <div class="sheethead">
         <div class="row between"><h2>${editing ? 'Бүртгэл засах' : 'Бүртгэл'} · ${h(t.id)}</h2><span class="tag">${h(gpsNamePreview())}</span></div>
         <span class="muted small">${fmtDate(s.t)} ${fmtTime(s.t)} · ${s.obsLat.toFixed(5)}, ${s.obsLon.toFixed(5)}${s.obsAlt != null ? ' · ' + Math.round(s.obsAlt) + ' м' : ''} · ${h(s.recorder || '')}${s.effort ? '' : ' · <b class="warn">судалгааны бус</b>'}</span>
+        ${obs && (obs.age > 15 || obs.acc > 25) ? `<div class="errbox">GPS алдаатай байна. Утсаа цонх руу ойртуулна уу.<br><span class="small">Сүүлийн байрлал ${obs.age} сек өмнө${obs.acc != null ? ', ±' + Math.round(obs.acc) + ' м' : ''}</span></div>` : ''}
       </div>
       <div class="sheetbody">
         <span class="lbl">Зүйл</span>
@@ -1490,19 +1513,19 @@ function openRecord({ survey, t, obs, sighting, onDone }) {
           ${sx && !hasParts && s.total != null ? '<div class="note">Бөхөн, хар сүүлтэд эр, эм, төл, тодорхойгүйг заавал бөглөнө.</div>' : ''}
         </div>`}
         <div class="grid2">
-          <div class="col gap4"><label class="lbl" for="fdist">Зай, м</label><input id="fdist" class="inp big" type="number" inputmode="numeric" min="0" value="${s.dist ?? ''}"></div>
-          <div class="col gap4"><label class="lbl" for="fang">Өнцөг, 0–360°</label><div class="angrow"><input id="fang" class="inp big" type="number" inputmode="numeric" min="0" max="360" value="${s.angle ?? ''}"><button class="compbtn" data-act2="compass" aria-label="Утасны луужин">${ICON.compass}</button></div></div>
+          <div class="col gap4"><label class="lbl" for="fdist">Зай, м</label><input id="fdist" class="inp big" type="number" inputmode="numeric" min="0" placeholder="м" value="${s.dist ?? ''}"></div>
+          <div class="col gap4"><label class="lbl" for="fang">Өнцөг, 0–360°</label><div class="angrow"><input id="fang" class="inp big" type="number" inputmode="numeric" min="0" max="360" placeholder="°" value="${s.angle ?? ''}"><button class="compbtn" data-act2="compass" aria-label="Утасны луужин">${ICON.compass}</button></div></div>
         </div>
         <button class="btn blue" data-act2="pick">${ICON.pin} Газрын зургаас оруулах</button>
         <details class="card veg" ${vegOpen ? 'open' : ''}>
           <summary><b>Цас, ургамал</b> <span class="muted small">(байгаа ургамлаа бөглөнө, хоосон үлдээж болно)</span></summary>
           <div class="row between"><span></span><button class="btn small" data-act2="same">Өмнөхтэй адил</button></div>
           <div class="veggrid">
-            <span>Цас, мм</span><input class="inp" type="number" inputmode="decimal" data-f="snow" aria-label="Цас, мм" value="${s.snow ?? ''}"><span></span>
+            <span>Цас, мм</span><input class="inp" type="text" inputmode="decimal" data-f="snow" aria-label="Цас, мм" placeholder="мм" value="${s.snow ?? ''}"><span></span>
             <span></span><span class="tiny muted">Өндөр, см</span><span class="tiny muted">Бүрхэц, %</span>
-            <span>Алаг өвс</span><input class="inp" type="number" inputmode="decimal" data-f="forbH" aria-label="Алаг өвс өндөр" value="${s.forbH ?? ''}"><input class="inp" type="number" inputmode="decimal" data-f="forbC" aria-label="Алаг өвс бүрхэц" value="${s.forbC ?? ''}">
-            <span>Үетэн</span><input class="inp" type="number" inputmode="decimal" data-f="grassH" aria-label="Үетэн өндөр" value="${s.grassH ?? ''}"><input class="inp" type="number" inputmode="decimal" data-f="grassC" aria-label="Үетэн бүрхэц" value="${s.grassC ?? ''}">
-            <span>Бут</span><input class="inp" type="number" inputmode="decimal" data-f="shrubH" aria-label="Бут өндөр" value="${s.shrubH ?? ''}"><input class="inp" type="number" inputmode="decimal" data-f="shrubC" aria-label="Бут бүрхэц" value="${s.shrubC ?? ''}">
+            <span>Алаг өвс</span><input class="inp" type="text" inputmode="decimal" data-f="forbH" aria-label="Алаг өвс өндөр" placeholder="см" value="${s.forbH ?? ''}"><input class="inp" type="text" inputmode="decimal" data-f="forbC" aria-label="Алаг өвс бүрхэц" placeholder="%" value="${s.forbC ?? ''}">
+            <span>Үетэн</span><input class="inp" type="text" inputmode="decimal" data-f="grassH" aria-label="Үетэн өндөр" placeholder="см" value="${s.grassH ?? ''}"><input class="inp" type="text" inputmode="decimal" data-f="grassC" aria-label="Үетэн бүрхэц" placeholder="%" value="${s.grassC ?? ''}">
+            <span>Бут</span><input class="inp" type="text" inputmode="decimal" data-f="shrubH" aria-label="Бут өндөр" placeholder="см" value="${s.shrubH ?? ''}"><input class="inp" type="text" inputmode="decimal" data-f="shrubC" aria-label="Бут бүрхэц" placeholder="%" value="${s.shrubC ?? ''}">
           </div>
         </details>
         <div class="col gap4"><label class="lbl" for="fnote">Тэмдэглэл</label><textarea id="fnote" class="inp" rows="2" placeholder="ШИНЭ, үхсэн шалтгаан гэх мэт">${h(s.note)}</textarea></div>
@@ -1524,7 +1547,7 @@ function openRecord({ survey, t, obs, sighting, onDone }) {
     const kt = num('#ktotal'); if (kt !== undefined) s.total = kt;
     const d = num('#fdist'); if (d !== undefined) s.dist = d;
     const a = num('#fang'); if (a !== undefined) s.angle = a == null ? a : Math.round(a);
-    o.querySelectorAll('[data-f]').forEach((el) => { s[el.dataset.f] = el.value.trim() === '' ? null : +el.value; });
+    o.querySelectorAll('[data-f]').forEach((el) => { s[el.dataset.f] = decNum(el.value); });
     const n = o.querySelector('#fnote'); if (n) s.note = n.value;
     const pn = o.querySelector('#fphnote'); if (pn) s.photoNote = pn.value;
     o.querySelectorAll('[data-cap]').forEach((el) => {
@@ -1590,7 +1613,11 @@ function openRecord({ survey, t, obs, sighting, onDone }) {
   };
 
   const act2 = {
-    cancel: () => { close(); },
+    cancel: async () => {
+      readInputs();
+      if ((JSON.stringify(s) !== snap0 || newPhotos.length) && !(await confirmBox('Хадгалахгүй гарах уу?', 'Оруулсан мэдээлэл устна.', 'Гарах', 'Буцах', 'danger'))) return;
+      close();
+    },
     compass: async () => {
       readInputs();
       const v = await compassDialog();
@@ -1630,6 +1657,7 @@ function openRecord({ survey, t, obs, sighting, onDone }) {
       const VEG = ['snow', 'forbH', 'forbC', 'grassH', 'grassC', 'shrubH', 'shrubC'];
       if (VEG.some((k) => s[k] < 0) || ['forbC', 'grassC', 'shrubC'].some((k) => s[k] > 100)) return err('Цас, ургамлын утга буруу байна (бүрхэц 0-100%)');
       if (s.dist != null && s.dist < 0) return err('Зай буруу байна');
+      if (s.dist != null && s.dist > 3000 && !warnedFar) { warnedFar = true; return err(`Зай ${s.dist} м (${(s.dist / 1000).toFixed(1)} км) байна. Зөв бол дахин "Хадгалах" дарна уу.`, 5000); }
       if ((s.dist == null || s.angle == null) && !keypadOnly() && !warnedMissing) {
         warnedMissing = true;
         return err('Зай, өнцөг бөглөөгүй байна. Тэгсээр хадгалах бол дахин "Хадгалах" дарна уу.');
@@ -1651,7 +1679,7 @@ function openRecord({ survey, t, obs, sighting, onDone }) {
       s.photos = [...keepIds, ...newPhotos.map((p) => p.id)];
       s.synced = false;
       s.rev = Date.now();
-      await db.put('sightings', s);
+      try { await db.put('sightings', s); } catch (e) { console.error(e); storageError(e, true); return false; }
       close();
       toast(`Хадгаллаа: ${s.gpsName}`, 'ok');
       sync.syncAll();
@@ -1664,6 +1692,8 @@ function openRecord({ survey, t, obs, sighting, onDone }) {
       for (const pid of s.photos) { const p = await db.get('photos', pid); if (p) existingPhotos.push({ id: p.id, caption: p.caption, url: URL.createObjectURL(p.blob) }); }
     }
     render();
+    readInputs();
+    snap0 = JSON.stringify(s);
   })();
 }
 

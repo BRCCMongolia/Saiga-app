@@ -33,7 +33,7 @@ export function buildXlsx(data, tids) {
   const effort = sightings.filter((s) => s.effort);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, sheet(rowsFor(effort), SIGHTING_HEADERS), 'Бүгд');
-  const groups = [['Монгол Бөхөн', 'Монгол бөхөн'], ['Хар сүүлт', 'Хар сүүлт зээр'], ['Бод мал', 'Бод мал'], ['Бог мал', 'Бог мал']];
+  const groups = [['Монгол бөхөн', 'Монгол бөхөн'], ['Хар сүүлт', 'Хар сүүлт зээр'], ['Бод мал', 'Бод мал'], ['Бог мал', 'Бог мал']];
   for (const [name, sp] of groups) XLSX.utils.book_append_sheet(wb, sheet(rowsFor(effort.filter((s) => s.species === sp)), SIGHTING_HEADERS), name);
   const ts = survey.transects.filter((t) => !tids || tids.includes(t.id));
   XLSX.utils.book_append_sheet(wb, sheet(ts.map((t) => transectRow(runs[t.id], t, points[t.id], survey)), TRANSECT_HEADERS), 'Трансект');
