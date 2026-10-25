@@ -226,7 +226,7 @@ textarea.inp { resize: vertical; }
 /* текст хуудас */
 .prose { max-width: 720px; }
 .prose h2 { font-size: 18px; margin: 14px 0 6px; color: var(--green); }
-.prose ol { padding-left: 22px; }
+.prose ol, .prose ul { padding-left: 22px; }
 .prose li { margin-bottom: 8px; }
 .figure { display: block; width: 100%; background: #fff; border-radius: 12px; border: 1px solid var(--line); margin: 8px 0; }
 .leaflet-container { font: inherit; background: #E6DCC8; }
