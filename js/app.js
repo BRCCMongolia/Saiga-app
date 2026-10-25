@@ -473,10 +473,10 @@ async function surveyView(sid) {
     else act = `<a class="mini yellow" href="#/run/${encodeURIComponent(sid)}/${encodeURIComponent(t.id)}">Үргэлжлүүлэх</a>`;
     // Төлөвлөсөнтэй харьцуулсан илүү/дутуу (явсан судалгааны зам - төлөвлөсөн урт)
     const diff = st.effortKm - t.km;
-    const extra = r.status === 'new' ? '' : `<span class="tiny diff ${diff >= 0 ? 'green' : 'warn'}">${diff >= 0 ? 'илүү' : 'дутуу'} ${Math.abs(diff).toFixed(1)}</span>`;
+    const extra = r.status === 'new' ? '<span>–</span>' : `<span class="diff ${diff >= 0 ? 'green' : 'warn'}">${diff >= 0 ? '+' : '−'}${Math.abs(diff).toFixed(1)}</span>`;
     return `<div class="trow ${r.status === 'incomplete' || r.status === 'paused' || r.status === 'returning' ? 'yel' : ''}">
       <a href="#/t/${encodeURIComponent(sid)}/${encodeURIComponent(t.id)}" class="tid">${h(t.id)}</a>
-      <span>${t.km.toFixed(1)}</span><span class="b">${r.status === 'new' ? '–' : st.effortKm.toFixed(1)} ${extra}</span>${act}</div>`;
+      <span>${t.km.toFixed(1)}</span><span class="b">${r.status === 'new' ? '–' : st.effortKm.toFixed(1)}</span>${extra}${act}</div>`;
   };
   $app.innerHTML = `<div class="screen">
     ${topbar(survey.name, '#/', `<a class="iconbtn" href="#/new/${encodeURIComponent(sid)}" aria-label="Засах">${ICON.edit}</a>`)}
@@ -484,15 +484,15 @@ async function surveyView(sid) {
     <div class="scroll pad col">
       <img src="img/transect-map.jpg" alt="Трансектын зураг" class="mapimg" data-act="zoomimg">
       <div class="grid3">
-        <div class="stat"><span>Дууссан</span><b class="green">${doneN} / ${survey.transects.length}</b></div>
+        <div class="stat"><span>Дууссан замнал</span><b class="green">${doneN} / ${survey.transects.length}</b></div>
         <div class="stat"><span>Явсан</span><b>${drivenKm.toFixed(1)} км</b></div>
         <div class="stat"><span>Үлдсэн</span><b class="orange">${remainKm.toFixed(1)} км</b></div>
       </div>
       ${keys.map((k) => {
         const open = !closed[k];
         return `<div class="group">
-          <button class="ghead ${k === 'Дутуу' ? 'yel' : (k === 'Эхлээгүй' ? 'grey' : '')}" data-act="tog" data-k="${h(k)}"><b>${h(k)}</b><span class="muted small">${groups[k].length} трансект ${open ? '▲' : '▼'}</span></button>
-          ${open ? `<div class="thead"><span>Трансект</span><span>Төлөв. км</span><span>Явсан км<br>илүү/дутуу</span><span></span></div>${groups[k].map(row).join('')}` : ''}
+          <button class="ghead ${k === 'Дутуу' ? 'yel' : (k === 'Эхлээгүй' ? 'grey' : '')}" data-act="tog" data-k="${h(k)}"><b>${/^\d{4}\./.test(k) ? `Дууссан замнал <span class="small muted">${h(k)}</span>` : h(k)}</b><span class="muted small">${groups[k].length} трансект ${open ? '▲' : '▼'}</span></button>
+          ${open ? `<div class="thead"><span>Трансект</span><span>Төлөв. км</span><span>Явсан км</span><span>Илүү/<br>дутуу</span><span></span></div>${groups[k].map(row).join('')}` : ''}
         </div>`;
       }).join('')}
       <div id="report">${reportHtml(survey, sightsAll, stats, !!closed.__repOpen)}</div>
@@ -540,7 +540,12 @@ function reportHtml(survey, sights, stats, open) {
       return `<tr><td>${h(sp)}</td><td>${v.length}</td><td><b>${sum}</b></td><td>${(sum / v.length).toFixed(1)}</td><td>${Math.min(...v)}</td><td>${Math.max(...v)}</td></tr>`;
     }).join('');
   };
-  const table = (list) => (list.length ? `<div class="rtable"><table><thead><tr><th>Зүйл</th><th>Сүрэг</th><th>Нийт</th><th>Дундаж</th><th>Мин</th><th>Макс</th></tr></thead><tbody>${rows(list)}</tbody></table></div>` : '<p class="muted small">Бүртгэл алга</p>');
+  // Бүх зүйлийн нийт мөр (зүйлүүдийн өмнө)
+  const totalRow = (list) => {
+    const v = list.map((x) => +x.total || 0), sum = v.reduce((a, b) => a + b, 0);
+    return `<tr class="tot"><td>Нийт</td><td>${v.length}</td><td>${sum}</td><td>${(sum / v.length).toFixed(1)}</td><td>${Math.min(...v)}</td><td>${Math.max(...v)}</td></tr>`;
+  };
+  const table = (list) => (list.length ? `<div class="rtable"><table><thead><tr><th>Зүйл</th><th>Сүрэг</th><th>Нийт</th><th>Дундаж</th><th>Мин</th><th>Макс</th></tr></thead><tbody>${totalRow(list)}${rows(list)}</tbody></table></div>` : '<p class="muted small">Бүртгэл алга</p>');
   return `<div class="group">
     <button class="ghead" data-act="togrep"><b>Товч тайлан</b><span class="muted small">${open ? '▲' : '▼'}</span></button>
     ${open ? `<div class="pad col">
@@ -651,6 +656,7 @@ async function runView(sid, tid) {
     <div class="rside">
       <button class="fab" data-act="center" aria-label="Төвлөрүүлэх" id="bcenter">${ICON.center}</button>
       <button class="fab" data-act="lock" aria-label="Газрын зургийг түгжих" id="block">${ICON.unlock}</button>
+      <button class="fab" data-act="rotate" aria-label="Замналыг дээш чиглүүлэх" id="brot">${ICON.navup}</button>
       <button class="fab" data-act="layer" aria-label="Газрын зургийн давхарга">${ICON.layers}</button>
       <button class="fab" data-act="list" aria-label="Бүртгэсэн амьтад">${ICON.list}<span class="badge" id="scount"></span></button>
     </div>
@@ -709,11 +715,39 @@ async function runView(sid, tid) {
     R.locked = !R.locked;
     const f = R.locked ? 'disable' : 'enable';
     ['dragging', 'touchZoom', 'doubleClickZoom', 'scrollWheelZoom', 'boxZoom'].forEach((k) => map[k] && map[k][f]());
+    if (settings.rotate && map.dragging) map.dragging.disable();
     const b = document.getElementById('block');
     b.innerHTML = R.locked ? ICON.lock : ICON.unlock;
     b.classList.toggle('on', R.locked);
     toast(R.locked ? 'Газрын зураг түгжигдлээ' : 'Түгжээ тайллаа');
   };
+  // Замналын чиглэлийг дэлгэцийн дээш болгох: газрын зургийг CSS-ээр эргүүлнэ (Leaflet өөрөө эргэдэггүй)
+  const applyRotate = () => {
+    const el = document.getElementById('rmap'), b = document.getElementById('brot');
+    if (!el) return;
+    const on = !!settings.rotate;
+    if (on) {
+      const [S, E] = ends();
+      const W = innerWidth, H = innerHeight, D = Math.ceil(Math.hypot(W, H));
+      Object.assign(el.style, { inset: 'auto', width: D + 'px', height: D + 'px', left: (W - D) / 2 + 'px', top: (H - D) / 2 + 'px', transform: `rotate(${-geo.bearing(S[0], S[1], E[0], E[1])}deg)` });
+    } else Object.assign(el.style, { inset: '', width: '', height: '', left: '', top: '', transform: '' });
+    // Эргүүлсэн үед чирэхэд чиглэл буруу болох тул чирэхийг хааж, томруулахыг төвөөр хийнэ
+    map.options.touchZoom = on ? 'center' : true;
+    if (map.dragging) map.dragging[on || R.locked ? 'disable' : 'enable']();
+    b.classList.toggle('on', on);
+    const c = R.fix ? [R.fix.lat, R.fix.lon] : map.getCenter();
+    map.invalidateSize({ pan: false });
+    map.setView(c, map.getZoom(), { animate: false });
+  };
+  actions.rotate = async () => {
+    settings.rotate = !settings.rotate;
+    await saveSettings();
+    applyRotate();
+    toast(settings.rotate ? 'Замнал дээш чиглэлтэй' : 'Хойд зүг дээшээ');
+  };
+  const onResize = () => { if (settings.rotate) applyRotate(); };
+  addEventListener('resize', onResize);
+  cleanup.push(() => removeEventListener('resize', onResize));
   actions.layer = async () => {
     settings.layer = settings.layer === 'sat' ? 'topo' : 'sat';
     await saveSettings();
@@ -773,6 +807,7 @@ async function runView(sid, tid) {
     if ((now < sun.sunrise.getTime() || now > sun.sunset.getTime()) && !(await confirmBox('Нар мандаагүй / жаргасан байна', `Нар ${fmtTime(sun.sunrise)}-д мандаж, ${fmtTime(sun.sunset)}-д жаргана. Удирдамжаар харанхуйд замнал явахгүй. Эхлэх үү?`, 'Эхлэх', 'Болих'))) return;
     run.dir = dA <= dB ? 'ab' : 'ba';
     startMk.setLatLng(ends()[0]); endMk.setLatLng(ends()[1]);
+    applyRotate();
     run.seg = (run.seg || 0) + 1;
     event('start');
     run.status = 'active';
@@ -965,6 +1000,7 @@ async function runView(sid, tid) {
   cleanup.push(() => { clearInterval(saver); if (R.dirty) { run.rev = Date.now(); db.put('runs', run); } });
 
   bottom();
+  applyRotate();
   cleanup.push(gps.onFix(onFix));
   if (settings.sim) {
     const [S, E] = ends();
@@ -1028,7 +1064,6 @@ function openRecord({ survey, t, obs, sighting, onDone }) {
   let open = null; // аль тоо сонгогч нээлттэй
   let warnedMissing = false;
   let vegOpen = true;
-  let warnedVeg = false;
   const quick = () => QUICK_SPECIES.find((q) => q.mn === s.species) || null;
   const isQuick = (q) => (q.other ? (s.species && !QUICK_SPECIES.some((x) => x.mn === s.species) && !/ сэг$/.test(s.species)) : q.carcass ? / сэг$/.test(s.species) : s.species === q.mn);
   const needSex = () => { const q = quick(); return q && q.sex; };
@@ -1078,7 +1113,7 @@ function openRecord({ survey, t, obs, sighting, onDone }) {
         </div>
         <button class="btn blue" data-act2="pick">${ICON.pin} Газрын зургаас оруулах</button>
         <details class="card veg" ${vegOpen ? 'open' : ''}>
-          <summary><b>Цас, ургамал</b> <span class="muted small">(бөглөнө, байхгүй бол 0)</span></summary>
+          <summary><b>Цас, ургамал</b> <span class="muted small">(байгаа ургамлаа бөглөнө, хоосон үлдээж болно)</span></summary>
           <div class="row between"><span></span><button class="btn small" data-act2="same">Өмнөхтэй адил</button></div>
           <div class="veggrid">
             <span>Цас, мм</span><input class="inp" type="number" inputmode="decimal" data-f="snow" aria-label="Цас, мм" value="${s.snow ?? ''}"><span></span>
@@ -1206,10 +1241,6 @@ function openRecord({ survey, t, obs, sighting, onDone }) {
       if (hasParts && sum !== s.total) return err(`Нийлбэр ${sum}. Нийт ${s.total} байх ёстой.`);
       if (s.angle != null && (s.angle < 0 || s.angle > 360)) return err('Өнцөг 0-360 байна');
       const VEG = ['snow', 'forbH', 'forbC', 'grassH', 'grassC', 'shrubH', 'shrubC'];
-      if (VEG.some((k) => s[k] == null || isNaN(s[k])) && !warnedVeg) {
-        warnedVeg = true; vegOpen = true; render();
-        return err('Цас, ургамлын өндөр, бүрхэц дутуу байна. Бөглөх эсвэл "Өмнөхтэй адил" дарна уу. Бичихгүй хадгалах бол дахин "Хадгалах" дарна.', 5000);
-      }
       if (VEG.some((k) => s[k] < 0) || ['forbC', 'grassC', 'shrubC'].some((k) => s[k] > 100)) return err('Цас, ургамлын утга буруу байна (бүрхэц 0-100%)');
       if (s.dist != null && s.dist < 0) return err('Зай буруу байна');
       if ((s.dist == null || s.angle == null) && !keypadOnly() && !warnedMissing) {
