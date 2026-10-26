@@ -70,7 +70,7 @@ export function buildKml(data, t) {
     k += '<Placemark><name>' + esc(t.id + ' ' + nm + ' ' + fmtTime(e.t)) + '</name><Point><coordinates>' + r5(e.lon) + ',' + r5(e.lat) + '</coordinates></Point></Placemark>';
   }
   for (const s of sights) {
-    const desc = s.species + ', ' + (s.total ?? '') + ' бодгаль, ' + (s.dist ?? '') + ' м, ' + (s.angle ?? '') + '°, ' + fmtDate(s.t) + ' ' + fmtTime(s.t) + (s.note ? ', ' + s.note : '');
+    const desc = s.species + ', ' + (s.total ?? '') + ' бодгаль, ' + (s.dist ?? '') + ' м, ' + (s.angle ?? '') + '°, ' + fmtDate(s.t) + ' ' + fmtTime(s.t) + (s.note ? ', ' + s.note : '') + (s.effort ? '' : ' (судалгааны бус зам)');
     const lat = s.animLat ?? s.obsLat, lon = s.animLon ?? s.obsLon;
     k += '<Placemark><name>' + esc(s.gpsName) + '</name><description>' + esc(desc) + '</description><Point><coordinates>' + r5(lon) + ',' + r5(lat) + '</coordinates></Point></Placemark>';
   }

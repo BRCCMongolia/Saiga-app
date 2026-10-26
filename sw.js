@@ -1,5 +1,5 @@
 // Офлайн ажиллагаа: аппын файлууд ба газрын зургийн хэсгүүдийг утсанд хадгална.
-const VERSION = 'v1.4.8';
+const VERSION = 'v1.4.9';
 const SHELL = 'shell-' + VERSION;
 const TILES = 'tiles-v1';
 const FILES = [
