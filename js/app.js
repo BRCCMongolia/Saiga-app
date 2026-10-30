@@ -123,7 +123,7 @@ async function homeView() {
       <div class="row between"><b>${h(s.name)}</b><span class="row gap4">${s.test ? '<span class="pill">Туршилт</span>' : ''}<span class="pill ${finished ? 'green' : 'yellow'}">${finished ? 'Дууссан' : (rs.some((r) => r.status !== 'new') ? 'Явж байна' : 'Эхлээгүй')}</span></span></div>
       <span class="muted small">${s.startDate ? fmtDate(s.startDate) + ' – ' + (s.endDate ? fmtDate(s.endDate) : '') : 'Эхлээгүй'} · Ахлагч: ${h(s.leader || '-')}</span>
       <span class="muted small">Судлаач: ${h((s.researchers || []).join(', ') || '-')}</span>
-      <span class="muted small">${done} / ${s.transects.length} трансект дууссан</span>
+      <div class="row between"><span class="muted small">${done} / ${s.transects.length} трансект дууссан</span><button class="link danger small" data-act="delsurvey" data-id="${h(s.id)}">Устгах</button></div>
     </a>`;
   }).join('');
   $app.innerHTML = `
@@ -153,6 +153,7 @@ async function homeView() {
     </div>
   </div>`;
   syncStatusInto('syncst');
+  actions.delsurvey = (el) => { const s = surveys.find((x) => x.id === el.dataset.id); if (s) askDeleteSurvey(s); };
   actions.newsurvey = async () => {
     const y = new Date().getFullYear();
     const cur = surveys.find((s) => !s.test && new Date(s.createdAt).getFullYear() === y);
@@ -842,6 +843,9 @@ async function deleteRun(survey, t, run) {
 async function askDeleteSurvey(survey) {
   if (!(await confirmBox('Устгах уу?', `<b>${h(survey.name)}</b> судалгааны бүх замнал, бүртгэл, зураг устгагдана.`, 'Устгах', 'Болих', 'danger'))) return;
   if (!(await confirmBox(`Та "${h(survey.name)}" судалгааг устгахдаа итгэлтэй байна уу?`, 'Устгасныг буцаах боломжгүй.', 'Тийм, устгах', 'Болих', 'danger'))) return;
+  const runs = (await db.byIndex('runs', 'survey', survey.id)).filter((r) => r.status !== 'new' && r.status !== 'deleted').length;
+  const n = (await db.byIndex('sightings', 'survey', survey.id)).filter((x) => !x.deleted).length;
+  if (!(await confirmBox('Сүүлийн удаа асууж байна', `<b>${h(survey.name)}</b>: ${runs} замнал, ${n} бүртгэл устгагдана. Устгасны дараа шинэ судалгаа эхлүүлж болно.`, 'Бүр мөсөн устгах', 'Болих', 'danger'))) return;
   await deleteSurvey(survey);
   toast('Судалгаа устгагдлаа');
   sync.syncAll();
