@@ -21,6 +21,7 @@ let actions = {};
 let cleanup = [];
 let DEFAULT_TRANSECTS = [];
 let SPECIES = [];
+const DEFAULT_SHEET_URL = 'https://script.google.com/macros/s/AKfycbz_QVyEK1dGWg_OfPBGcPGvf--tCCTXw5lTFhqbg4WqhR-A_0e3UGzw4K2tGEZHDjtmuA/exec';
 let settings = { warn1: 200, warn2: 300, sim: false, simFactor: 5, layer: 'topo' };
 
 // ---------- эхлүүлэх ----------
@@ -30,6 +31,8 @@ async function init() {
   Object.assign(settings, await db.getMeta('settings', {}));
   // Хуучин 300/500 м-ийн анхны тохиргоог 200/300 м болгоно (нэг удаа)
   if (!settings.dev3) { if (settings.warn1 === 300 && settings.warn2 === 500) { settings.warn1 = 200; settings.warn2 = 300; } settings.dev3 = true; db.setMeta('settings', settings); }
+  // BRCC-ийн Sheet/имэйлийн холбоос урьдчилан суулгагдсан (Тохиргооноос сольж болно)
+  if (!(await db.getMeta('sheetUrl', ''))) await db.setMeta('sheetUrl', DEFAULT_SHEET_URL);
   db.persist();
   $app.addEventListener('click', (e) => {
     unlockAudio();
@@ -37,8 +40,9 @@ async function init() {
     if (el && actions[el.dataset.act]) { e.preventDefault(); actions[el.dataset.act](el, e); }
   });
   window.addEventListener('hashchange', onHash);
-  window.addEventListener('online', () => sync.syncAll());
-  setInterval(() => sync.syncAll(), 120000);
+  window.addEventListener('online', () => { sync.syncAll(); flushMail(); });
+  setInterval(() => { sync.syncAll(); flushMail(); }, 120000);
+  setTimeout(flushMail, 5000);
   route();
   sync.syncAll();
 }
@@ -553,7 +557,8 @@ async function surveyView(sid) {
     const r = runs[t.id];
     if (r.status === 'done' || r.status === 'incomplete') doneN++;
     drivenKm += stats[t.id].effortKm;
-    remainKm += r.status === 'done' ? 0 : (r.status === 'new' ? t.km : stats[t.id].remainingKm);
+    // Дууссан (дутуугаар дуусгасан ч) замналд үлдэх км тооцохгүй
+    remainKm += r.status === 'done' || r.status === 'incomplete' ? 0 : (r.status === 'new' ? t.km : stats[t.id].remainingKm);
   }
   const groups = {};
   const order = [];
@@ -804,6 +809,42 @@ async function detailView(sid, tid) {
     toast('Файл бэлдэж байна...');
     try { const z = await exp.zipTransect(survey, tid); await sendZip(z, survey, survey.name + ' · ' + tid); } catch (e) { console.error(e); toast('Алдаа: ' + e.message, 'err', 5000); }
   };
+}
+
+// ---------- замнал дуусахад автомат имэйл ----------
+// Дараалал (meta 'mailQueue'): интернэт ормогц замналын ZIP-ийг BRCC-ийн имэйл рүү илгээнэ
+let mailBusy = false, mailRetryAt = 0;
+async function queueMail(sid, tid) {
+  const q = (await db.getMeta('mailQueue', [])).filter((x) => !(x.sid === sid && x.tid === tid));
+  q.push({ sid, tid, at: Date.now() });
+  await db.setMeta('mailQueue', q);
+  mailRetryAt = 0;
+  flushMail();
+}
+async function flushMail() {
+  if (mailBusy || !navigator.onLine || Date.now() < mailRetryAt || !(await db.getMeta('sheetUrl', ''))) return;
+  mailBusy = true;
+  try {
+    for (;;) {
+      const q = await db.getMeta('mailQueue', []);
+      if (!q.length) break;
+      const it = q[0];
+      const survey = await db.get('surveys', it.sid);
+      const run = survey && !survey.deleted ? await db.get('runs', runKey(it.sid, it.tid)) : null;
+      // Дахин нээсэн эсвэл устгасан бол алгасна (дахин дуусгахад дахин орно)
+      if (run && (run.status === 'done' || run.status === 'incomplete')) {
+        const z = await exp.zipTransect(survey, it.tid);
+        const subject = (survey.test ? 'ТУРШИЛТ · ' : '') + survey.name + ' · ' + it.tid + ' дууссан';
+        const r = await sync.emailZip(z.blob, z.name, subject, `${survey.name}\nЗамнал: ${it.tid}\nБүртгэгч: ${survey.recorder || '-'}\nФайл: ${z.name}`, survey.name);
+        if (!r) break;
+        toast(`${it.tid} замналын өгөгдөл ${r.to} руу илгээгдлээ`, 'ok', 4000);
+      }
+      await db.setMeta('mailQueue', (await db.getMeta('mailQueue', [])).filter((x) => !(x.sid === it.sid && x.tid === it.tid && x.at === it.at)));
+    }
+  } catch (e) {
+    console.error(e);
+    mailRetryAt = Date.now() + 10 * 60000; // алдаа гарвал 10 минутын дараа дахин оролдоно
+  } finally { mailBusy = false; }
 }
 
 // Sheet холбогдсон, интернэттэй бол BRCC-ийн имэйл рүү шууд, үгүй бол утасны хуваалцах цэсээр
@@ -1180,6 +1221,7 @@ async function runView(sid, tid) {
     const rs = await Promise.all(survey.transects.map((x) => db.get('runs', runKey(sid, x.id))));
     if (rs.every((r) => r && (r.status === 'done' || r.status === 'incomplete'))) { survey.endDate = Date.now(); await db.put('surveys', survey); }
     sync.syncAll();
+    queueMail(sid, tid);
   };
   // Нэг удаад зөвхөн нэг замнал: өөр замнал дуусаагүй бол шинийг эхлүүлэхгүй
   const otherOpen = async () => {
