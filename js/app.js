@@ -32,7 +32,7 @@ async function init() {
   // Хуучин 300/500 м-ийн анхны тохиргоог 200/300 м болгоно (нэг удаа)
   if (!settings.dev3) { if (settings.warn1 === 300 && settings.warn2 === 500) { settings.warn1 = 200; settings.warn2 = 300; } settings.dev3 = true; db.setMeta('settings', settings); }
   // BRCC-ийн Sheet/имэйлийн холбоос урьдчилан суулгагдсан (Тохиргооноос сольж болно)
-  if (!(await db.getMeta('sheetUrl', ''))) await db.setMeta('sheetUrl', DEFAULT_SHEET_URL);
+  if ((await db.getMeta('sheetUrl', null)) === null) await db.setMeta('sheetUrl', DEFAULT_SHEET_URL);
   db.persist();
   $app.addEventListener('click', (e) => {
     unlockAudio();
@@ -40,8 +40,10 @@ async function init() {
     if (el && actions[el.dataset.act]) { e.preventDefault(); actions[el.dataset.act](el, e); }
   });
   window.addEventListener('hashchange', onHash);
-  window.addEventListener('online', () => { sync.syncAll(); flushMail(); });
-  setInterval(() => { sync.syncAll(); flushMail(); }, 120000);
+  // Sheet рүү илгээж дууссаны дараа имэйл (Apps Script-ийн түгжээнд зэрэг өрсөлдөхгүй)
+  const syncThenMail = () => sync.syncAll().catch(() => {}).finally(flushMail);
+  window.addEventListener('online', syncThenMail);
+  setInterval(syncThenMail, 120000);
   setTimeout(flushMail, 5000);
   route();
   sync.syncAll();
@@ -401,7 +403,8 @@ async function restore(e) {
   if (!(await confirmBox('Нөөцөөс сэргээх үү?', 'Файл доторх өгөгдөл энэ утасны өгөгдөлтэй нэгдэнэ (ижил бичлэгийг дарж бичнэ).'))) return;
   try {
     const data = JSON.parse(await f.text());
-    for (const s of ['surveys', 'runs', 'sightings', 'meta']) for (const v of data[s] || []) await db.put(s, v);
+    // Энэ утасны имэйлийн дараалал, Sheet холбоосыг нөөцөөр дарж бичихгүй
+    for (const s of ['surveys', 'runs', 'sightings', 'meta']) for (const v of data[s] || []) { if (s === 'meta' && (v.k === 'mailQueue' || v.k === 'sheetUrl')) continue; await db.put(s, v); }
     // Цэгийн n дугаарыг хаяж шинээр олгоно (утасны өөрийн цэгийг дарж бичихгүй), runKey+t-ээр давхардлыг алгасна
     const seen = {};
     for (const p of data.points || []) {
@@ -813,37 +816,45 @@ async function detailView(sid, tid) {
 
 // ---------- замнал дуусахад автомат имэйл ----------
 // Дараалал (meta 'mailQueue'): интернэт ормогц замналын ZIP-ийг BRCC-ийн имэйл рүү илгээнэ
-let mailBusy = false, mailRetryAt = 0;
+let mailBusy = false, mailRetryAt = 0, mailQ = Promise.resolve();
+// Дарааллыг нэг нэгээр нь өөрчилнө (зэрэг бичээд нэг нь алга болохоос сэргийлнэ)
+const editMailQueue = (fn) => (mailQ = mailQ.then(async () => db.setMeta('mailQueue', fn(await db.getMeta('mailQueue', []))))).catch((e) => console.error(e));
 async function queueMail(sid, tid) {
-  const q = (await db.getMeta('mailQueue', [])).filter((x) => !(x.sid === sid && x.tid === tid));
-  q.push({ sid, tid, at: Date.now() });
-  await db.setMeta('mailQueue', q);
+  await editMailQueue((q) => [...q.filter((x) => !(x.sid === sid && x.tid === tid)), { sid, tid, at: Date.now(), tries: 0 }]);
   mailRetryAt = 0;
-  flushMail();
 }
 async function flushMail() {
   if (mailBusy || !navigator.onLine || Date.now() < mailRetryAt || !(await db.getMeta('sheetUrl', ''))) return;
   mailBusy = true;
+  const drop = (it) => editMailQueue((q) => q.filter((x) => !(x.sid === it.sid && x.tid === it.tid && x.at === it.at)));
   try {
     for (;;) {
+      await mailQ;
       const q = await db.getMeta('mailQueue', []);
       if (!q.length) break;
       const it = q[0];
       const survey = await db.get('surveys', it.sid);
       const run = survey && !survey.deleted ? await db.get('runs', runKey(it.sid, it.tid)) : null;
-      // Дахин нээсэн эсвэл устгасан бол алгасна (дахин дуусгахад дахин орно)
-      if (run && (run.status === 'done' || run.status === 'incomplete')) {
+      // Дахин нээсэн, устгасан эсвэл замнал жагсаалтаас хасагдсан бол алгасна (дахин дуусгахад дахин орно)
+      if (!run || !(run.status === 'done' || run.status === 'incomplete') || !survey.transects.some((x) => x.id === it.tid)) { await drop(it); continue; }
+      try {
         const z = await exp.zipTransect(survey, it.tid);
+        if (z.blob.size > 25 * 1024 * 1024) { toast(`${it.tid} файл хэт том тул автоматаар илгээсэнгүй. "Бүх өгөгдлийг имэйлээр"-ээр илгээнэ үү.`, 'warn', 8000); await drop(it); continue; }
         const subject = (survey.test ? 'ТУРШИЛТ · ' : '') + survey.name + ' · ' + it.tid + ' дууссан';
         const r = await sync.emailZip(z.blob, z.name, subject, `${survey.name}\nЗамнал: ${it.tid}\nБүртгэгч: ${survey.recorder || '-'}\nФайл: ${z.name}`, survey.name);
         if (!r) break;
         toast(`${it.tid} замналын өгөгдөл ${r.to} руу илгээгдлээ`, 'ok', 4000);
+        await drop(it);
+      } catch (e) {
+        console.error(e);
+        // 3 удаа бүтэлгүйтвэл дарааллаас хасаж, бусдыг нь хаахгүй
+        const tries = (it.tries || 0) + 1;
+        if (tries >= 3) { toast(`${it.tid} имэйлээр илгээж чадсангүй. "Бүх өгөгдлийг имэйлээр"-ээр илгээнэ үү.`, 'warn', 8000); await drop(it); continue; }
+        await editMailQueue((q2) => q2.map((x) => (x.sid === it.sid && x.tid === it.tid && x.at === it.at ? { ...x, tries } : x)));
+        mailRetryAt = Date.now() + 10 * 60000; // 10 минутын дараа дахин оролдоно
+        break;
       }
-      await db.setMeta('mailQueue', (await db.getMeta('mailQueue', [])).filter((x) => !(x.sid === it.sid && x.tid === it.tid && x.at === it.at)));
     }
-  } catch (e) {
-    console.error(e);
-    mailRetryAt = Date.now() + 10 * 60000; // алдаа гарвал 10 минутын дараа дахин оролдоно
   } finally { mailBusy = false; }
 }
 
@@ -1220,8 +1231,8 @@ async function runView(sid, tid) {
     // Бүх трансект дууссан бол дуусах огноо
     const rs = await Promise.all(survey.transects.map((x) => db.get('runs', runKey(sid, x.id))));
     if (rs.every((r) => r && (r.status === 'done' || r.status === 'incomplete'))) { survey.endDate = Date.now(); await db.put('surveys', survey); }
-    sync.syncAll();
-    queueMail(sid, tid);
+    await queueMail(sid, tid);
+    sync.syncAll().catch(() => {}).finally(flushMail);
   };
   // Нэг удаад зөвхөн нэг замнал: өөр замнал дуусаагүй бол шинийг эхлүүлэхгүй
   const otherOpen = async () => {
