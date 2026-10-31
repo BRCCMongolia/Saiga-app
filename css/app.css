@@ -87,6 +87,7 @@ img { max-width: 100%; }
 .tile { display: flex; flex-direction: column; gap: 4px; color: var(--green); }
 .tile b { color: var(--ink); font-size: 16px; }
 .survey { display: flex; flex-direction: column; gap: 3px; }
+.survey .link.danger { padding: 8px 0 8px 16px; margin: -8px 0; font-size: 14px; }
 .foot { margin-top: 8px; }
 
 /* судалгааны дэлгэц */

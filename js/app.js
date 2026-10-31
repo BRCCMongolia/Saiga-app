@@ -129,7 +129,7 @@ async function homeView() {
       <div class="row between"><b>${h(s.name)}</b><span class="row gap4">${s.test ? '<span class="pill">Туршилт</span>' : ''}<span class="pill ${finished ? 'green' : 'yellow'}">${finished ? 'Дууссан' : (rs.some((r) => r.status !== 'new') ? 'Явж байна' : 'Эхлээгүй')}</span></span></div>
       <span class="muted small">${s.startDate ? fmtDate(s.startDate) + ' – ' + (s.endDate ? fmtDate(s.endDate) : '') : 'Эхлээгүй'} · Ахлагч: ${h(s.leader || '-')}</span>
       <span class="muted small">Судлаач: ${h((s.researchers || []).join(', ') || '-')}</span>
-      <span class="muted small">${done} / ${s.transects.length} трансект дууссан</span>
+      <div class="row between"><span class="muted small">${done} / ${s.transects.length} трансект дууссан</span><button class="link danger small" data-act="delsurvey" data-id="${h(s.id)}">Устгах</button></div>
     </a>`;
   }).join('');
   $app.innerHTML = `
@@ -159,6 +159,7 @@ async function homeView() {
     </div>
   </div>`;
   syncStatusInto('syncst');
+  actions.delsurvey = (el) => { const s = surveys.find((x) => x.id === el.dataset.id); if (s) askDeleteSurvey(s); };
   actions.newsurvey = async () => {
     const y = new Date().getFullYear();
     const cur = surveys.find((s) => !s.test && new Date(s.createdAt).getFullYear() === y);
@@ -894,6 +895,12 @@ async function deleteRun(survey, t, run) {
 async function askDeleteSurvey(survey) {
   if (!(await confirmBox('Устгах уу?', `<b>${h(survey.name)}</b> судалгааны бүх замнал, бүртгэл, зураг устгагдана.`, 'Устгах', 'Болих', 'danger'))) return;
   if (!(await confirmBox(`Та "${h(survey.name)}" судалгааг устгахдаа итгэлтэй байна уу?`, 'Устгасныг буцаах боломжгүй.', 'Тийм, устгах', 'Болих', 'danger'))) return;
+  const runs = (await db.byIndex('runs', 'survey', survey.id)).filter((r) => r.status !== 'new' && r.status !== 'deleted').length;
+  const n = (await db.byIndex('sightings', 'survey', survey.id)).filter((x) => !x.deleted).length;
+  const unsent = survey.test ? 0 : (await db.byIndex('sightings', 'survey', survey.id)).filter((x) => !x.synced && !x.deleted).length
+    + (await db.byIndex('runs', 'survey', survey.id)).filter((r) => !r.synced && r.status !== 'new' && r.status !== 'deleted').length;
+  const warn = unsent ? `<br><br><b style="color:#c62828">Анхаар: ${unsent} бичлэг Sheet рүү илгээгдээгүй байна. Устгавал эдгээр нь хаана ч хадгалагдахгүй.</b>` : '';
+  if (!(await confirmBox('Сүүлийн удаа асууж байна', `<b>${h(survey.name)}</b>: ${runs} замнал, ${n} бүртгэл устгагдана. Устгасны дараа шинэ судалгаа эхлүүлж болно.${warn}`, 'Бүр мөсөн устгах', 'Болих', 'danger'))) return;
   await deleteSurvey(survey);
   toast('Судалгаа устгагдлаа');
   sync.syncAll();
@@ -1545,7 +1552,7 @@ async function pauseDialog(tid) {
 
 // ---------- + Бүртгэл маягт ----------
 // "2,5" ба "2.5" хоёуланг 2.5 гэж уншина
-const decNum = (v) => { v = String(v).trim().replace(',', '.'); return v === '' || isNaN(+v) ? null : +v; };
+const decNum = (v) => { v = String(v).trim().replace(',', '.'); return v === '' || isNaN(+v) ? null : Math.round(+v); };
 
 function openRecord({ survey, t, obs, sighting, onDone }) {
   const editing = !!sighting;
@@ -1614,11 +1621,11 @@ function openRecord({ survey, t, obs, sighting, onDone }) {
           <summary><b class="nowrap">Цас, ургамал</b></summary>
           <div class="row between"><span></span><button class="btn small" data-act2="same">Өмнөхтэй адил</button></div>
           <div class="veggrid">
-            <span>Цас, мм</span><input class="inp" type="text" inputmode="decimal" data-f="snow" aria-label="Цас, мм" placeholder="мм" value="${s.snow ?? ''}"><span></span>
+            <span>Цас, мм</span><input class="inp" type="number" inputmode="numeric" step="1" min="0" data-f="snow" aria-label="Цас, мм" placeholder="мм" value="${s.snow ?? ''}"><span></span>
             <span></span><span class="tiny muted">Өндөр, см</span><span class="tiny muted">Бүрхэц, %</span>
-            <span>Алаг өвс</span><input class="inp" type="text" inputmode="decimal" data-f="forbH" aria-label="Алаг өвс өндөр" placeholder="см" value="${s.forbH ?? ''}"><input class="inp" type="text" inputmode="decimal" data-f="forbC" aria-label="Алаг өвс бүрхэц" placeholder="%" value="${s.forbC ?? ''}">
-            <span>Үетэн</span><input class="inp" type="text" inputmode="decimal" data-f="grassH" aria-label="Үетэн өндөр" placeholder="см" value="${s.grassH ?? ''}"><input class="inp" type="text" inputmode="decimal" data-f="grassC" aria-label="Үетэн бүрхэц" placeholder="%" value="${s.grassC ?? ''}">
-            <span>Бут</span><input class="inp" type="text" inputmode="decimal" data-f="shrubH" aria-label="Бут өндөр" placeholder="см" value="${s.shrubH ?? ''}"><input class="inp" type="text" inputmode="decimal" data-f="shrubC" aria-label="Бут бүрхэц" placeholder="%" value="${s.shrubC ?? ''}">
+            <span>Алаг өвс</span><input class="inp" type="number" inputmode="numeric" step="1" min="0" data-f="forbH" aria-label="Алаг өвс өндөр" placeholder="см" value="${s.forbH ?? ''}"><input class="inp" type="number" inputmode="numeric" step="1" min="0" data-f="forbC" aria-label="Алаг өвс бүрхэц" placeholder="%" value="${s.forbC ?? ''}">
+            <span>Үетэн</span><input class="inp" type="number" inputmode="numeric" step="1" min="0" data-f="grassH" aria-label="Үетэн өндөр" placeholder="см" value="${s.grassH ?? ''}"><input class="inp" type="number" inputmode="numeric" step="1" min="0" data-f="grassC" aria-label="Үетэн бүрхэц" placeholder="%" value="${s.grassC ?? ''}">
+            <span>Бут</span><input class="inp" type="number" inputmode="numeric" step="1" min="0" data-f="shrubH" aria-label="Бут өндөр" placeholder="см" value="${s.shrubH ?? ''}"><input class="inp" type="number" inputmode="numeric" step="1" min="0" data-f="shrubC" aria-label="Бут бүрхэц" placeholder="%" value="${s.shrubC ?? ''}">
           </div>
         </details>
         <div class="col gap4"><label class="lbl" for="fnote">Тэмдэглэл</label><textarea id="fnote" class="inp" rows="2" placeholder="ШИНЭ, үхсэн шалтгаан гэх мэт">${h(s.note)}</textarea></div>
